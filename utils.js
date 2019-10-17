@@ -1,3 +1,6 @@
+var CryptoJS = require('crypto-js');
+//var CryptoJS = require('./crypto-js-ext/cryptojs-aes.min.js');
+
 var utils = {};
 
 utils.normaliseHex = function(raw) {
@@ -109,3 +112,5 @@ utils.xorU8Array = function(bytes1, bytes2) {
 utils.leastSignificantBit = function(number) {
     return number & 1;
 }
+
+module.exports = utils;

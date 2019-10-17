@@ -8,7 +8,9 @@
             "type": "node",
             "request": "launch",
             "name": "Launch Program",
-            "program": "${workspaceFolder}\\node-red-contrib-ble-mesh.js"
+            "program": "${workspaceFolder}\\node-red-contrib-ble-mesh.js",
+            "env": {"DEBUG": "* node noble.js hci.js usb.js"},
+            "outputCapture": "std"
         }
     ]
 }
