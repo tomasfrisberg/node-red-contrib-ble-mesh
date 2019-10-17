@@ -255,7 +255,7 @@ function obfuscate(enc_dst, enc_transport_pdu, netmic, ctl, ttl, seq, src, iv_in
 	result.pecb = pecb;
 	ctl_int = parseInt(ctl, 16);
 	ttl_int = parseInt(ttl, 16);
-	ctl_ttl = ctl_int | ttl_int;
+	ctl_ttl = (ctl_int << 7) | ttl_int;
 	ctl_ttl_hex = utils.toHex(ctl_ttl, 1);
 	ctl_ttl_seq_src = ctl_ttl_hex + seq + src;
 	result.ctl_ttl_seq_src = ctl_ttl_seq_src;
