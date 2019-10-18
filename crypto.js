@@ -94,6 +94,9 @@ function k2(N, P) {
 	modval_bigint = bigInt(modval.remainder);
 
 	k2_hex = utils.bigIntegerToHexString(modval_bigint);
+	if(k2_hex.length % 2 === 1) {
+		k2_hex = "0" + k2_hex;
+	}
 
 	var k2_material = {
 		NID: 0,
@@ -149,7 +152,7 @@ function privacyRandom(enc_dst, enc_transport_pdu, netmic) {
 	}
 }
 
-function decryptAndVerify(hex_key, hex_cipher, hex_nonce) {
+function decryptAndVerify(hex_key, hex_cipher, hex_nonce, mic_size) {
 	dec_ver_result = {
 		hex_decrypted: "",
 		status: 0,
@@ -157,7 +160,7 @@ function decryptAndVerify(hex_key, hex_cipher, hex_nonce) {
 	}
 	try {
 		var adata = new Uint8Array([ ]);
-		dec = asmCrypto.AES_CCM.decrypt( utils.hexToU8A(hex_cipher), utils.hexToU8A(hex_key), utils.hexToU8A(hex_nonce), adata, 4 );
+		dec = asmCrypto.AES_CCM.decrypt( utils.hexToU8A(hex_cipher), utils.hexToU8A(hex_key), utils.hexToU8A(hex_nonce), adata, mic_size );
 		hex_dec = utils.u8AToHexString(dec);
 		dec_ver_result.hex_decrypted = hex_dec;
 	} catch (err) {
@@ -210,7 +213,7 @@ function meshAuthEncAccessPayload(hex_appkey, hex_nonce, hex_payload) {
 	return result;
 };
 
-function meshAuthEncNetwork(hex_encryption_key, hex_nonce, hex_dst, hex_transport_pdu) {
+function meshAuthEncNetwork(hex_encryption_key, hex_nonce, hex_dst, hex_transport_pdu, micSize) {
 	arg3 = hex_dst + hex_transport_pdu;
 	var result = {
 		Encryption_Key: hex_encryption_key,
@@ -221,11 +224,11 @@ function meshAuthEncNetwork(hex_encryption_key, hex_nonce, hex_dst, hex_transpor
 	u8_key = utils.hexToU8A(hex_encryption_key);
 	u8_nonce = utils.hexToU8A(hex_nonce);
 	u8_dst_plus_transport_pdu = utils.hexToU8A(arg3);
-	auth_enc_network = asmCrypto.AES_CCM.encrypt(u8_dst_plus_transport_pdu, u8_key, u8_nonce, new Uint8Array([]), 4);
+	auth_enc_network = asmCrypto.AES_CCM.encrypt(u8_dst_plus_transport_pdu, u8_key, u8_nonce, new Uint8Array([]), micSize);
 	hex = utils.u8AToHexString(auth_enc_network);
 	result.EncDST = hex.substring(0, 4);
-	result.EncTransportPDU = hex.substring(4, hex.length - 8);
-	result.NetMIC = hex.substring(hex.length - 8, hex.length);
+	result.EncTransportPDU = hex.substring(4, hex.length - micSize * 2);
+	result.NetMIC = hex.substring(hex.length - micSize * 2, hex.length);
 	return result;
 }
 

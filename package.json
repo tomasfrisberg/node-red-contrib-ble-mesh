@@ -22,6 +22,8 @@
   },
   "homepage": "https://github.com/tomasfrisberg/node-red-contrib-ble-mesh#readme",
   "dependencies": {
+    "@abandonware/bluetooth-hci-socket": "^0.5.3-3",
+    "@abandonware/noble": "^1.9.2-5",
     "big-integer": "^1.6.47",
     "crypto-js": "^3.1.9-1",
     "node-aes-cmac": "^0.1.1"

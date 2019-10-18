@@ -63,6 +63,9 @@ function proxyClient(name, callback)
     this.I = utils.normaliseHex(this.iv_index);
     this.ivi = utils.leastSignificantBit(parseInt(this.I, 16));
 
+    console.log("hex_encryption_key ", this.hex_encryption_key);
+    console.log("hex_privacy_key ", this.hex_privacy_key);
+
     noble.on('stateChange', (state) => {
         console.log(this.name + ": State " + state);
         switch(state) {
@@ -221,13 +224,8 @@ function onServicesAndCharacteristicsDiscovered(error, services, characteristics
     */
 }
 
-function onCharacteristicData(data, isNotification)
+function onCharacteristicData(octets, isNotification)
 {
-    this.logAndValidatePdu(data);
-}
-
-proxyClient.prototype.logAndValidatePdu = function(octets) {
-
     // length validation
     if (octets.length < 1) {
       console.log("Error: No data received");
@@ -262,28 +260,198 @@ proxyClient.prototype.logAndValidatePdu = function(octets) {
   
     console.log("Proxy PDU: SAR=" + utils.intToHex(sar) + " MSGTYPE=" + utils.intToHex(msgtype) + " NETWORK PDU=" + utils.u8AToHexString(network_pdu));
   
-    if(msgtype !== 0x00) {
-        if((msgtype === 0x01) && (network_pdu[0] == 0x01)) {
+    switch(msgtype) {
+    case 0x00:
+        // Network PDU
+        console.log("Network PDU");
+        this.parseNetworkPdu(network_pdu);
+        break;
+    case 0x01:
+        // Mesh beacon
+        console.log("Mesh Beacon");
+        this.parseMeshBeacon(network_pdu);
+        break;
+    case 0x02:
+        // Proxy configuration
+        console.log("Proxy Configuration");
+        this.parseProxyConfiguration(network_pdu);
+        break;
+    case 0x03:
+        // Provisioning PDU
+        console.log("Provisioning PDU not supported");
+        break;
+    default:
+        // RFU
+        console.log("RFU not supported");
+        break;
+    }
+}
 
-            var nId = utils.u8AToHexString(network_pdu.subarray(2, 10));
+proxyClient.prototype.parseMeshBeacon = function (network_pdu) {
+    if(network_pdu[0] == 0x01) {
 
-            //TODO: verify authentication value
+        var nId = utils.u8AToHexString(network_pdu.subarray(2, 10));
 
-            console.log("Secure network beacon");
+        //TODO: verify authentication value
 
-            if(nId === this.network_id) {
-                console.log("Matching network id");
+        console.log("Secure network beacon");
 
-                this.iv_index = utils.u8AToHexString(network_pdu.subarray(10, 14));
-                this.I = utils.normaliseHex(this.iv_index);
-                this.ivi = utils.leastSignificantBit(parseInt(this.I, 16));
+        if(nId === this.network_id) {
+            console.log("Matching network id");
 
-                this.setFilterType(0x00);
-            }
+            this.iv_index = utils.u8AToHexString(network_pdu.subarray(10, 14));
+            this.I = utils.normaliseHex(this.iv_index);
+            this.ivi = utils.leastSignificantBit(parseInt(this.I, 16));
+
+            this.setFilterType(0x00);
         }
-        return;
+    }
+}
+
+proxyClient.prototype.networkNonceMicSize = function(msgType, ctl, ttl, hex_seq, hex_src, hex_iv_index) {
+    var result = {};
+
+    switch(msgType) {
+        case 0:
+            // Nework nonce
+            ctl_int = parseInt(ctl, 16);
+            ttl_int = parseInt(ttl, 16);
+            ctl_ttl = (ctl_int << 7) | ttl_int;
+            hex_npdu2 = utils.intToHex(ctl_ttl);
+            result.nonce = "00" + hex_npdu2 + hex_seq + hex_src + "0000" + hex_iv_index;
+            result.mic_size = 4;
+            break;
+        case 2:
+            // Proxy nonce
+            result.hex_nonce = "0300" + hex_seq + hex_src + "0000" + hex_iv_index;
+            result.mic_size = 8;
+            break;
+        default:
+            console.log("ERROR nonce not implemented");
+            break;
     }
 
+    return result;
+}
+
+proxyClient.prototype.parseProxyConfiguration = function(network_pdu) {
+
+    var hex_deobfuscate = this.deobfuscateNetworkPdu(network_pdu);
+
+    var hex_decrypted = this.decryptAndVerifyNetworkPdu(2, hex_deobfuscate);
+
+    if(hex_decrypted.substring(0, 4) === "0000") {
+        // Destination address must be non-valid
+        var hex_op_code = hex_decrypted.substring(4, 6);
+        switch(hex_op_code) {
+            case "03":
+                var hex_filter_type = hex_decrypted.substring(6, 8);
+                var hex_list_size = hex_decrypted.substring(8, 12);
+
+                console.log("hex_op_code ", hex_op_code, " hex_filter_type ", hex_filter_type, " hex_list_size ", hex_list_size);
+                break;
+            default:
+                console.log("Unknown op code ", hex_op_code);
+                break;
+        }
+
+    }
+    else {
+        console.log("Non-valid destination address ", hex_decrypted.substring(0, 4));
+    }
+}
+
+proxyClient.prototype.deobfuscateNetworkPdu = function (network_pdu) {
+    // demarshall obfuscated network pdu
+    pdu_ivi = network_pdu.subarray(0, 1)[0] & 0x80;
+    pdu_nid = network_pdu.subarray(0, 1)[0] & 0x7F;
+    obfuscated_ctl_ttl_seq_src = network_pdu.subarray(1, 7);
+    enc_dst = network_pdu.subarray(7, 9);
+    enc_transport_pdu = network_pdu.subarray(9, network_pdu.length - 4);
+    netmic = network_pdu.subarray(network_pdu.length - 4, network_pdu.length);
+  
+    hex_pdu_ivi = utils.intToHex(pdu_ivi);
+    hex_pdu_nid = utils.intToHex(pdu_nid);
+    hex_obfuscated_ctl_ttl_seq_src = utils.u8AToHexString(obfuscated_ctl_ttl_seq_src);
+    hex_enc_dst = utils.u8AToHexString(enc_dst);
+    hex_enc_transport_pdu = utils.u8AToHexString(enc_transport_pdu);
+    //hex_netmic = utils.intToHex(netmic);
+    hex_netmic = utils.u8AToHexString(netmic);
+
+    // 3.4.6.3 Receiving a Network PDU
+    // Upon receiving a message, the node shall check if the value of the NID field value matches one or more known NIDs
+    if (hex_pdu_nid != this.hex_nid) {
+        console.log("unknown nid - discarding");
+        return;
+    }
+  
+    console.log("enc_dst=" + hex_enc_dst);
+    console.log("enc_transport_pdu=" + hex_enc_transport_pdu);
+    console.log("NetMIC=" + hex_netmic);
+  
+    // -----------------------------------------------------
+    // 2. Deobfuscate network PDU - ref 3.8.7.3
+    // -----------------------------------------------------
+    hex_privacy_random = crypto.privacyRandom(hex_enc_dst, hex_enc_transport_pdu, hex_netmic);
+    console.log("Privacy Random=" + hex_privacy_random);
+  
+    deobfuscated = crypto.deobfuscate(hex_obfuscated_ctl_ttl_seq_src, this.iv_index, this.netkey, hex_privacy_random, this.hex_privacy_key);
+    
+    result = {};
+
+    result.hex_enc_dst = utils.bytesToHex(enc_dst);
+    result.hex_enc_transport_pdu = utils.bytesToHex(enc_transport_pdu);
+    result.hex_netmic = utils.bytesToHex(netmic);
+    result.hex_ctl_ttl_seq_src = deobfuscated.ctl_ttl_seq_src;
+
+    return result;
+}
+
+proxyClient.prototype.decryptAndVerifyNetworkPdu = function (type, hex_deobfuscate) {
+    // ref 3.8.7.2 Network layer authentication and encryption
+  
+    // -----------------------------------------------------
+    // 3. Decrypt and verify network PDU - ref 3.8.5.1
+    // -----------------------------------------------------
+  
+
+    hex_pdu_ctl_ttl = hex_deobfuscate.hex_ctl_ttl_seq_src.substring(0, 2);
+  
+    hex_pdu_seq = hex_deobfuscate.hex_ctl_ttl_seq_src.substring(2, 8);
+    // NB: SEQ should be unique for each PDU received. We don't enforce this rule here to allow for testing with the same values repeatedly.
+  
+    hex_pdu_src = hex_deobfuscate.hex_ctl_ttl_seq_src.substring(8, 12);
+    // validate SRC
+    src_bytes = utils.hexToBytes(hex_pdu_src);
+    src_value = src_bytes[0] + (src_bytes[1] << 8);
+    if (src_value < 0x0001 || src_value > 0x7FFF) {
+      console.log("SRC is not a valid unicast address. 0x0001-0x7FFF allowed. Ref 3.4.2.2");
+      return;
+    }
+  
+    ctl_int = (parseInt(hex_pdu_ctl_ttl, 16) & 0x80) >> 7;
+    ttl_int = parseInt(hex_pdu_ctl_ttl, 16) & 0x7F;
+
+    var sec = this.networkNonceMicSize(type, ctl_int, ttl_int, hex_pdu_seq, hex_pdu_src, this.iv_index);
+  
+    console.log("hex_enc_dst=" + hex_deobfuscate.hex_enc_dst);
+    console.log("hex_enc_transport_pdu=" + hex_deobfuscate.hex_enc_transport_pdu);
+    console.log("hex_netmic=" + hex_deobfuscate.hex_netmic);
+  
+    hex_enc_network_data = hex_deobfuscate.hex_enc_dst + hex_deobfuscate.hex_enc_transport_pdu + hex_deobfuscate.hex_netmic;
+    console.log("decrypting and verifying network layer: " + hex_enc_network_data + " key: " + this.hex_encryption_key + " nonce: " + sec.hex_nonce);
+    result = crypto.decryptAndVerify(this.hex_encryption_key, hex_enc_network_data, sec.hex_nonce, sec.mic_size);
+    console.log("result=" + JSON.stringify(result));
+    if (result.status == -1) {
+      console.log("ERROR: "+result.error.message);
+      return;
+    }
+  
+    return result.hex_decrypted;
+}
+
+proxyClient.prototype.parseNetworkPdu = function (network_pdu) {
+    
     // demarshall obfuscated network pdu
     pdu_ivi = network_pdu.subarray(0, 1)[0] & 0x80;
     pdu_nid = network_pdu.subarray(0, 1)[0] & 0x7F;
@@ -433,17 +601,32 @@ proxyClient.prototype.logAndValidatePdu = function(octets) {
 
 proxyClient.prototype.setFilterType = function (type)
 {
+    this.msg_type = 2;
     this.ctl = 1;
     this.ttl = "00";
-    this.msg_type = 2;
     this.dst = "0000";
 
-    var accessPayload = this.accessPayloadFilterType(type); // White list
+    var access_payload = "";
+    if((type === 0x00) || (type === 0x01)) {
+        access_payload = "00" + utils.toHex(type, 1); // "00" is filter type op code
+    }
+    else {
+        console.log("Invalid filter type", type);
+    }
 
-    var pdu = this.deriveProxyPdu(accessPayload);
+    var secured_network_pdu = this.deriveSecureNetworkLayer(this.dst, access_payload);
+    console.log("EncDST=" + JSON.stringify(secured_network_pdu.EncDST) + " EncTransportPDU=" + JSON.stringify(secured_network_pdu.EncTransportPDU));
 
-    //this.chDataIn.write(utils.hexToBytes(pdu), true);
-    this.chDataIn.write(Buffer.from(pdu, 'hex'), true, status => {
+    var obfuscated = this.obfuscateNetworkPdu(secured_network_pdu);
+    console.log("obfuscated_ctl_ttl_seq_src=" + JSON.stringify(obfuscated.obfuscated_ctl_ttl_seq_src));
+
+    var finalised_network_pdu = this.finaliseNetworkPdu(this.ivi, this.hex_nid, obfuscated.obfuscated_ctl_ttl_seq_src, secured_network_pdu.EncDST, secured_network_pdu.EncTransportPDU, network_pdu.NetMIC);
+    console.log("finalised_network_pdu=" + finalised_network_pdu);
+
+    var proxy_pdu = this.finaliseProxyPdu(finalised_network_pdu);
+    console.log("proxy_pdu=" + proxy_pdu);
+
+    this.chDataIn.write(Buffer.from(proxy_pdu, 'hex'), true, status => {
         console.log("setFilterType write callback status ", status);
     });
 }
@@ -512,14 +695,32 @@ proxyClient.prototype.deriveLowerTransportPdu = function (upper_transport_pdu) {
 
 proxyClient.prototype.deriveSecureNetworkLayer = function (hex_dst, lower_transport_pdu) {
     network_pdu = "";
-    ctl_int = parseInt(this.ctl, 16);
-    ttl_int = parseInt(this.ttl, 16);
-    //ctl_ttl = (ctl_int | ttl_int);
-    ctl_ttl = (ctl_int << 7) | ttl_int;
-    npdu2 = utils.intToHex(ctl_ttl);
+    
     N = utils.normaliseHex(this.hex_encryption_key);
-    net_nonce = "00" + npdu2 + utils.toHex(this.seq, 3) + this.src + "0000" + this.iv_index;
-    network_pdu = crypto.meshAuthEncNetwork(N, net_nonce, hex_dst, lower_transport_pdu);
+
+    if(this.msg_type === 0) {
+        // Network nonce
+        ctl_int = parseInt(this.ctl, 16);
+        ttl_int = parseInt(this.ttl, 16);
+        //ctl_ttl = (ctl_int | ttl_int);
+        ctl_ttl = (ctl_int << 7) | ttl_int;
+        npdu2 = utils.intToHex(ctl_ttl);
+        nonce = "00" + npdu2 + utils.toHex(this.seq, 3) + this.src + "0000" + this.iv_index;
+
+        micSize = 4;
+    }
+    else if(this.msg_type === 2) {
+        // Proxy nonce
+        nonce = "0300" + utils.toHex(this.seq, 3) + this.src + "0000" + this.iv_index;
+
+        micSize = 8;
+    }
+    else {
+        console.log("Error nonce type not implemented!!!");
+    }
+
+    console.log("net_nonce ", nonce);
+    network_pdu = crypto.meshAuthEncNetwork(N, nonce, hex_dst, lower_transport_pdu, micSize);
     return network_pdu;
 };
 
