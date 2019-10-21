@@ -6,15 +6,22 @@ var crypto = require('./crypto.js');
 const  State = {
     OFF: 1,
 
-    ON_IDLE: 3,
-    ON_SCANNING: 4,
-    ON_WAIT_STOP_SCANNING: 5
+    ON_IDLE: 2,
+
+    ON_CONNECTING_WAIT_CONNECT: 10,
+    ON_CONNECTING_WAIT_DISCOVER: 11,
+    ON_CONNECTING_WAIT_SECURE_NETWORK_BEACON: 12,
+    ON_CONNECTING_WAIT_FILTER_TYPE_STATUS: 13,
+
+    ON_CONNECTED_IDLE: 20,
+    ON_CONNECTED_WAIT_FILTER_ADDR_STATUS: 21
 };
 
 function proxyClient(name, callback)
 {
     this.name = name;
     this.state = State.OFF;
+    this.scanning = false;
     this.callback = callback;
 
     this.MESH_PROXY_SERVICE = '1828'; //'00001828-0000-1000-8000-00805f9b34fb';
@@ -63,6 +70,8 @@ function proxyClient(name, callback)
     this.I = utils.normaliseHex(this.iv_index);
     this.ivi = utils.leastSignificantBit(parseInt(this.I, 16));
 
+    this.hexSubscribeAddr = "";
+
     console.log("hex_encryption_key ", this.hex_encryption_key);
     console.log("hex_privacy_key ", this.hex_privacy_key);
 
@@ -70,34 +79,37 @@ function proxyClient(name, callback)
         console.log(this.name + ": State " + state);
         switch(state) {
             case "poweredOn":
-                this.state = State.ON_IDLE;
-                this.callback("On");
+                if(this.state === State.OFF) {
+                    this.state = State.ON_IDLE;
+                    this.callback("On");
+                }
                 break;
             case "poweredOff":
-                this.state = State.OFF;
-                this.callback("Off");
+                if(this.state !== State.OFF) {
+                    this.state = State.OFF;
+                    this.scanning = false;
+                    this.callback("Off");
+                }
                 break;
             }
     });
 
     noble.on('scanStart',  () => {
-        console.log(this.name + ": ScanStart");
+        console.log("noble.on: ScanStart");
     });
 
     noble.on('scanStop', () => {
-        console.log(this.name + ": ScanStop");
+        console.log("noble.on: ScanStop");
     });
 
     noble.on('discover', (peripheral) => {
-        //console.log(this.name + ": Discover " + peripheral.address + " " + peripheral.advertisement.localName);
-    
-        if(this.scanCallback) {
+        if(this.scanCallback && this.scanning) {
             this.scanCallback(peripheral);
         }
     });
 
     noble.on('warning', (msg) => {
-        console.log(this.name + ": Warning " + msg);
+        console.log("noble.on: Warning " + msg);
     });
 
     /*
@@ -120,11 +132,12 @@ function proxyClient(name, callback)
 
 proxyClient.prototype.startScanning = function (callback)
 {
-    this.scanCallback = callback;
-    this.state = State.ON_SCANNING;
+    if((this.state !== State.OFF) && !this.scanning) {
+        this.scanCallback = callback;
+        this.scanning = true;
 
-    noble.startScanning(['1828'], true);
-
+        noble.startScanning(['1828'], true);
+    }
     //noble.startScanning([0x1828], true, (errMsg) => {
     //        console.log(this.name + ": startScanning " + errMsg);
     //});
@@ -132,60 +145,76 @@ proxyClient.prototype.startScanning = function (callback)
 
 proxyClient.prototype.stopScanning = function ()
 {
-    console.log("stopScanning: State " + this.state);
-
-    switch(this.state) {
-        case State.ON_SCANNING:
-            noble.stopScanning();
-            this.state = State.ON_IDLE;
-            break;
-        default:
-            console.log("stopScanning: Error unexpected state");
-            break;
-    } 
+    if((this.state !== State.OFF) && this.scanning) {
+        this.scanning = false;
+        noble.stopScanning();
+    }
 }
 
 proxyClient.prototype.connect = function(peripheral)
 {
     switch(this.state) {
-        case State.ON_IDLE:
-            this.state = State.ON_WAIT_CONNECT;
-            this.peripheral = peripheral;
+    case State.ON_IDLE:
+        this.state = State.ON_CONNECTING_WAIT_CONNECT;
+        this.peripheral = peripheral;
 
-            this.peripheral.connect(error => {
-                if(!error) {
-                    console.log('Connected to', peripheral.advertisement.localName);
+        this.peripheral.connect(error => {
+            if(!error) {
+                console.log('Connected to', peripheral.advertisement.localName);
 
-                    this.peripheral.on('disconnect', () => console.log('disconnected'));
-                
-                    // specify the services and characteristics to discover
-                    const serviceUUIDs = [this.MESH_PROXY_SERVICE];
-                    const characteristicUUIDs = [this.MESH_PROXY_DATA_IN, this.MESH_PROXY_DATA_OUT];
-                
-                    this.state = State.ON_WAIT_DISCOVER;
-                    this.peripheral.discoverSomeServicesAndCharacteristics(
-                        serviceUUIDs,
-                        characteristicUUIDs,
-                        onServicesAndCharacteristicsDiscovered.bind(this)
-                    ); 
-                }
-                else {
-                    this.state = State.ON_IDLE;
-                    this.peripheral = null;
+                this.peripheral.on('disconnect', () => console.log('disconnected'));
+            
+                // specify the services and characteristics to discover
+                const serviceUUIDs = [this.MESH_PROXY_SERVICE];
+                const characteristicUUIDs = [this.MESH_PROXY_DATA_IN, this.MESH_PROXY_DATA_OUT];
+            
+                this.state = State.ON_CONNECTING_WAIT_DISCOVER;
+                this.peripheral.discoverSomeServicesAndCharacteristics(
+                    serviceUUIDs,
+                    characteristicUUIDs,
+                    onServicesAndCharacteristicsDiscovered.bind(this)
+                ); 
+            }
+            else {
+                this.state = State.ON_IDLE;
+                this.peripheral = null;
 
-                    console.log("connect: " + error);
-                }
-            });
+                console.log("connect: ", error);
+            }
+        });
+        break;
+    default:
+        console.log("connect: invalid state");
+        break;
+    }
+}
+
+proxyClient.prototype.subscribe = function (hexAddr) {
+    var ok = false;
+    if((hexAddr % 4) === 0) {
+        switch(this.state) {
+        case State.ON_CONNECTED_IDLE:
+            ok = this.setFilterAddr(hexAddr);
+            if(ok) {
+                this.state = State.ON_CONNECTED_WAIT_FILTER_ADDR_STATUS;
+            }
+            break;
+        case State.ON_CONNECTED_WAIT_FILTER_ADDR_STATUS:
+            this.hexSubscribeAddr = this.hexSubscribeAddr + hexAddr;
+            ok = true;
             break;
         default:
+            console.log("subscribe: Invalid state");
             break;
+        }
     }
+    return ok;
 }
 
 function onServicesAndCharacteristicsDiscovered(error, services, characteristics)
 {
 
-    console.log(this.name, 'Discovered services and characteristics', error, services.length, characteristics.length);
+    console.log("Discovered services and characteristics", error, services.length, characteristics.length);
 
     characteristics.forEach(ch => {
         if(ch.uuid === this.MESH_PROXY_DATA_IN) {
@@ -194,96 +223,83 @@ function onServicesAndCharacteristicsDiscovered(error, services, characteristics
         if(ch.uuid === this.MESH_PROXY_DATA_OUT) {
             this.chDataOut = ch;
 
-            this.chDataOut.on('data', onCharacteristicData.bind(this));
+            this.chDataOut.on("data", onCharacteristicData.bind(this));
             //this.chDataOut.on('read', onCharacteristicData.bind(this));
 
             this.chDataOut.subscribe(error => {
                 if(error) {
-                    console.log("Subscribe", error);
+                    console.log("Subscribe ", error);
                 }
             });
+
+            this.state = State.ON_CONNECTING_WAIT_SECURE_NETWORK_BEACON;
         }
     });
-
-    /*
-    const echoCharacteristic = characteristics[0];
-  
-    // data callback receives notifications
-    echoCharacteristic.on('data', (data, isNotification) => {
-      console.log('Received: "' + data + '"');
-    });
-    
-    // subscribe to be notified whenever the peripheral update the characteristic
-    echoCharacteristic.subscribe(error => {
-      if (error) {
-        console.error('Error subscribing to echoCharacteristic');
-      } else {
-        console.log('Subscribed for echoCharacteristic notifications');
-      }
-    });
-    */
 }
 
-function onCharacteristicData(octets, isNotification)
+function onCharacteristicData(data, isNotification)
 {
+    //TODO: Check states
+
     // length validation
-    if (octets.length < 1) {
-      console.log("Error: No data received");
-      return;
-    }
+    if (data.length > 0) {
   
-    // -----------------------------------------------------
-    // 1. Extract proxy PDU fields : SAR, msgtype, data
-    // -----------------------------------------------------
-    sar_msgtype = octets.subarray(0, 1)[0];
-    console.log("sar_msgtype="+sar_msgtype);
-    sar = (sar_msgtype & 0xC0) >> 6;
-    if (sar < 0 || sar > 3) {
-      console.log("SAR contains invalid value. 0-3 allowed. Ref Table 6.2");
-      return;
-    }
+        // -----------------------------------------------------
+        // 1. Extract proxy PDU fields : SAR, msgtype, data
+        // -----------------------------------------------------
+        var sar_msgtype = data.subarray(0, 1)[0];
+        console.log("sar_msgtype = ", sar_msgtype);
+        var sar = (sar_msgtype & 0xC0) >> 6;
+        if (sar < 0 || sar > 3) {
+            console.log("SAR contains invalid value. 0-3 allowed. Ref Table 6.2");
+            return;
+        }
+        
+        var msgtype = sar_msgtype & 0x3F;
+        if (msgtype < 0 || msgtype > 3) {
+            console.log("Message Type contains invalid value. 0x00-0x03 allowed. Ref Table 6.3");
+            return;
+        }
     
-    msgtype = sar_msgtype & 0x3F;
-    if (msgtype < 0 || msgtype > 3) {
-      console.log("Message Type contains invalid value. 0x00-0x03 allowed. Ref Table 6.3");
-      return;
+        // See table 3.7 for min length of network PDU and 6.1 for proxy PDU length
+        if (data.length < 15) {
+            console.log("PDU is too short (min 15 bytes) - ", data.length, " bytes received");
+            return;
+        }
+    
+        var network_pdu = null;
+        network_pdu = data.subarray(1, data.length);
+    
+        console.log("Proxy PDU: SAR = ", utils.intToHex(sar), " MSGTYPE = ", utils.intToHex(msgtype), " NETWORK PDU = ", utils.u8AToHexString(network_pdu));
+    
+        switch(msgtype) {
+        case 0x00:
+            // Network PDU
+            console.log("Network PDU");
+            this.parseNetworkPdu(network_pdu);
+            break;
+        case 0x01:
+            // Mesh beacon
+            console.log("Mesh Beacon");
+            this.parseMeshBeacon(network_pdu);
+            break;
+        case 0x02:
+            // Proxy configuration
+            console.log("Proxy Configuration");
+            this.parseProxyConfiguration(network_pdu);
+            break;
+        case 0x03:
+            // Provisioning PDU
+            console.log("Provisioning PDU not supported");
+            break;
+        default:
+            // RFU
+            console.log("RFU not supported");
+            break;
+        }
     }
-  
-    // See table 3.7 for min length of network PDU and 6.1 for proxy PDU length
-    if (octets.length < 15) {
-      console.log("PDU is too short (min 15 bytes) - " + octets.length+" bytes received");
-      return;
-    }
-  
-    network_pdu = null;
-    network_pdu = octets.subarray(1, octets.length);
-  
-    console.log("Proxy PDU: SAR=" + utils.intToHex(sar) + " MSGTYPE=" + utils.intToHex(msgtype) + " NETWORK PDU=" + utils.u8AToHexString(network_pdu));
-  
-    switch(msgtype) {
-    case 0x00:
-        // Network PDU
-        console.log("Network PDU");
-        this.parseNetworkPdu(network_pdu);
-        break;
-    case 0x01:
-        // Mesh beacon
-        console.log("Mesh Beacon");
-        this.parseMeshBeacon(network_pdu);
-        break;
-    case 0x02:
-        // Proxy configuration
-        console.log("Proxy Configuration");
-        this.parseProxyConfiguration(network_pdu);
-        break;
-    case 0x03:
-        // Provisioning PDU
-        console.log("Provisioning PDU not supported");
-        break;
-    default:
-        // RFU
-        console.log("RFU not supported");
-        break;
+    else {
+        console.log("Error: No data received");
     }
 }
 
@@ -294,16 +310,21 @@ proxyClient.prototype.parseMeshBeacon = function (network_pdu) {
 
         //TODO: verify authentication value
 
-        console.log("Secure network beacon");
-
         if(nId === this.network_id) {
-            console.log("Matching network id");
+            console.log("Secure network beacon");
 
             this.iv_index = utils.u8AToHexString(network_pdu.subarray(10, 14));
             this.I = utils.normaliseHex(this.iv_index);
             this.ivi = utils.leastSignificantBit(parseInt(this.I, 16));
 
-            this.setFilterType(0x00);
+            switch(this.state) {
+            case State.ON_CONNECTING_WAIT_SECURE_NETWORK_BEACON:
+                this.state = State.ON_CONNECTING_WAIT_FILTER_TYPE_STATUS;
+                this.setFilterType(0x00);
+                break;
+            default:
+                break;
+            }
         }
     }
 }
@@ -313,12 +334,12 @@ proxyClient.prototype.networkNonceMicSize = function(msgType, ctl, ttl, hex_seq,
 
     switch(msgType) {
         case 0:
-            // Nework nonce
+            // Network nonce
             ctl_int = parseInt(ctl, 16);
             ttl_int = parseInt(ttl, 16);
             ctl_ttl = (ctl_int << 7) | ttl_int;
             hex_npdu2 = utils.intToHex(ctl_ttl);
-            result.nonce = "00" + hex_npdu2 + hex_seq + hex_src + "0000" + hex_iv_index;
+            result.hex_nonce = "00" + hex_npdu2 + hex_seq + hex_src + "0000" + hex_iv_index;
             result.mic_size = 4;
             break;
         case 2:
@@ -336,28 +357,53 @@ proxyClient.prototype.networkNonceMicSize = function(msgType, ctl, ttl, hex_seq,
 
 proxyClient.prototype.parseProxyConfiguration = function(network_pdu) {
 
+    var hex_op_code = "";
     var hex_deobfuscate = this.deobfuscateNetworkPdu(network_pdu);
-
     var hex_decrypted = this.decryptAndVerifyNetworkPdu(2, hex_deobfuscate);
 
     if(hex_decrypted.substring(0, 4) === "0000") {
         // Destination address must be non-valid
-        var hex_op_code = hex_decrypted.substring(4, 6);
+        hex_op_code = hex_decrypted.substring(4, 6);
         switch(hex_op_code) {
-            case "03":
-                var hex_filter_type = hex_decrypted.substring(6, 8);
-                var hex_list_size = hex_decrypted.substring(8, 12);
+        case "03":
+            // Filter type status
+            var hex_filter_type = hex_decrypted.substring(6, 8);
+            var hex_list_size = hex_decrypted.substring(8, 12);
 
-                console.log("hex_op_code ", hex_op_code, " hex_filter_type ", hex_filter_type, " hex_list_size ", hex_list_size);
-                break;
-            default:
-                console.log("Unknown op code ", hex_op_code);
-                break;
+            console.log("hex_op_code ", hex_op_code, " hex_filter_type ", hex_filter_type, " hex_list_size ", hex_list_size);
+            break;
+        default:
+            console.log("Unknown op code ", hex_op_code);
+            break;
         }
-
     }
     else {
         console.log("Non-valid destination address ", hex_decrypted.substring(0, 4));
+    }
+
+    switch(this.state) {
+    case State.ON_CONNECTING_WAIT_FILTER_TYPE_STATUS:
+        if(hex_op_code === "03") {
+            this.state = State.ON_CONNECTED_IDLE;
+            this.callback("Connected");
+        }
+        break;
+    case State.ON_CONNECTED_WAIT_FILTER_ADDR_STATUS:
+        if(hex_op_code === "03") {
+            if(this.hexSubscribeAddr === "") {
+                this.state = State.ON_CONNECTED_IDLE;
+            }
+            else {
+                var ok = this.setFilterAddr(this.hexSubscribeAddr);
+                if(ok) {
+                    this.hexSubscribeAddr = "";
+                    // Remain in state
+                }
+            }
+        }
+        break;
+    default:
+        break;            
     }
 }
 
@@ -449,6 +495,231 @@ proxyClient.prototype.decryptAndVerifyNetworkPdu = function (type, hex_deobfusca
   
     return result.hex_decrypted;
 }
+
+proxyClient.prototype.setFilterType = function (type)
+{
+    var ok = false;
+
+    this.msg_type = 2;
+    this.ctl = 1;
+    this.ttl = "00";
+    this.dst = "0000";
+
+    var access_payload = "";
+    if((type === 0x00) || (type === 0x01)) {
+        access_payload = "00" + utils.toHex(type, 1); // "00" is filter type op code
+
+        var secured_network_pdu = this.deriveSecureNetworkLayer(this.dst, access_payload);
+        console.log("EncDST=" + JSON.stringify(secured_network_pdu.EncDST) + " EncTransportPDU=" + JSON.stringify(secured_network_pdu.EncTransportPDU));
+
+        var obfuscated = this.obfuscateNetworkPdu(secured_network_pdu);
+        console.log("obfuscated_ctl_ttl_seq_src=" + JSON.stringify(obfuscated.obfuscated_ctl_ttl_seq_src));
+
+        var finalised_network_pdu = this.finaliseNetworkPdu(this.ivi, this.hex_nid, obfuscated.obfuscated_ctl_ttl_seq_src, secured_network_pdu.EncDST, secured_network_pdu.EncTransportPDU, network_pdu.NetMIC);
+        console.log("finalised_network_pdu=" + finalised_network_pdu);
+
+        var proxy_pdu = this.finaliseProxyPdu(finalised_network_pdu);
+        console.log("proxy_pdu=" + proxy_pdu);
+
+        this.chDataIn.write(Buffer.from(proxy_pdu, 'hex'), true, status => {
+            console.log("setFilterType write callback status ", status);
+        });
+
+        ok = true;
+    }
+    else {
+        console.log("Invalid filter type", type);
+    }
+
+    return ok;
+}
+
+proxyClient.prototype.setFilterAddr = function (hexAddr)
+{
+    var ok = false;
+
+    if((hexAddr.length % 4) === 0) {
+        // Valid hex address list
+
+        this.msg_type = 2;
+        this.ctl = 1;
+        this.ttl = "00";
+        this.dst = "0000";
+
+        var access_payload = "01" + hexAddr;
+
+        var secured_network_pdu = this.deriveSecureNetworkLayer(this.dst, access_payload);
+        console.log("EncDST=" + JSON.stringify(secured_network_pdu.EncDST) + " EncTransportPDU=" + JSON.stringify(secured_network_pdu.EncTransportPDU));
+
+        var obfuscated = this.obfuscateNetworkPdu(secured_network_pdu);
+        console.log("obfuscated_ctl_ttl_seq_src=" + JSON.stringify(obfuscated.obfuscated_ctl_ttl_seq_src));
+
+        var finalised_network_pdu = this.finaliseNetworkPdu(this.ivi, this.hex_nid, obfuscated.obfuscated_ctl_ttl_seq_src, secured_network_pdu.EncDST, secured_network_pdu.EncTransportPDU, network_pdu.NetMIC);
+        console.log("finalised_network_pdu=" + finalised_network_pdu);
+
+        var proxy_pdu = this.finaliseProxyPdu(finalised_network_pdu);
+        console.log("proxy_pdu=" + proxy_pdu);
+
+        this.chDataIn.write(Buffer.from(proxy_pdu, 'hex'), true, status => {
+            console.log("setFilterType write callback status ", status);
+        });
+
+        ok = true;
+    }
+
+    return ok;
+}
+
+proxyClient.prototype.deriveSecureUpperTransportPdu = function (access_payload) {
+    upper_trans_pdu = {};
+    switch(this.msg_type) {
+        case 0:
+            // derive Application Nonce (ref 3.8.5.2)
+            app_nonce = "0100" + utils.toHex(this.seq, 3) + this.src + this.dst + this.iv_index;
+            break;
+        case 2:
+            // derive Proxy Nonce (ref 3.8.5.4)
+            app_nonce = "0300" + utils.toHex(this.seq, 3) + this.src + "0000" + this.iv_index;
+            break;
+        default:
+            console.log("Unsupported message type");
+            break;
+    }
+    upper_trans_pdu = crypto.meshAuthEncAccessPayload(this.A, app_nonce, access_payload);
+    return upper_trans_pdu;
+}
+
+proxyClient.prototype.deriveLowerTransportPdu = function (upper_transport_pdu) {
+    lower_transport_pdu = "";
+    // seg=0 (1 bit), akf=1 (1 bit), aid (6 bits) already derived from k4
+    seg_int = parseInt(this.seg, 16);
+    akf_int = parseInt(this.akf, 16);
+    aid_int = parseInt(this.aid, 16);
+    ltpdu1 = (seg_int << 7) | (akf_int << 6) | aid_int;
+    lower_transport_pdu = utils.intToHex(ltpdu1) + upper_transport_pdu.EncAccessPayload + upper_transport_pdu.TransMIC;
+    return lower_transport_pdu;
+};
+
+proxyClient.prototype.deriveSecureNetworkLayer = function (hex_dst, lower_transport_pdu) {
+    network_pdu = "";
+    
+    N = utils.normaliseHex(this.hex_encryption_key);
+
+    if(this.msg_type === 0) {
+        // Network nonce
+        ctl_int = parseInt(this.ctl, 16);
+        ttl_int = parseInt(this.ttl, 16);
+        ctl_ttl = (ctl_int << 7) | ttl_int;
+        npdu2 = utils.intToHex(ctl_ttl);
+        nonce = "00" + npdu2 + utils.toHex(this.seq, 3) + this.src + "0000" + this.iv_index;
+
+        micSize = 4;
+    }
+    else if(this.msg_type === 2) {
+        // Proxy nonce
+        nonce = "0300" + utils.toHex(this.seq, 3) + this.src + "0000" + this.iv_index;
+
+        micSize = 8;
+    }
+    else {
+        console.log("Error nonce type not implemented!!!");
+    }
+
+    console.log("net_nonce ", nonce);
+    network_pdu = crypto.meshAuthEncNetwork(N, nonce, hex_dst, lower_transport_pdu, micSize);
+    return network_pdu;
+};
+
+proxyClient.prototype.obfuscateNetworkPdu = function (network_pdu) {
+    obfuscated = "";
+    obfuscated = crypto.obfuscate(network_pdu.EncDST, network_pdu.EncTransportPDU, network_pdu.NetMIC,
+        this.ctl, this.ttl, utils.toHex(this.seq, 3), this.src, this.iv_index, this.hex_privacy_key);
+    return obfuscated;
+};
+
+proxyClient.prototype.finaliseNetworkPdu = function (ivi, nid, obfuscated_ctl_ttl_seq_src, enc_dst, enc_transport_pdu, netmic) {
+    ivi_int = parseInt(ivi, 16);
+    nid_int = parseInt(nid, 16);
+    npdu1 = utils.intToHex((ivi_int << 7) | nid_int);
+    netpdu = npdu1 + obfuscated_ctl_ttl_seq_src + enc_dst + enc_transport_pdu + netmic;
+    return netpdu;
+};
+
+proxyClient.prototype.finaliseProxyPdu = function (finalised_network_pdu) {
+    proxy_pdu = "";
+    sm = (this.sar << 6) | this.msg_type;  //TBD msg type
+    i = 0;
+    proxy_pdu = proxy_pdu + utils.intToHex(sm);
+    proxy_pdu = proxy_pdu + finalised_network_pdu;
+    return proxy_pdu;
+};
+
+
+proxyClient.prototype.deriveProxyPdu = function (access_payload) {
+    console.log("deriveProxyPdu");
+    valid_pdu = true;
+    // access payload
+    //access_payload = app.deriveAccessPayload();
+    //console.log("access_payload=" + access_payload);
+
+    // upper transport PDU
+    upper_transport_pdu_obj = this.deriveSecureUpperTransportPdu(access_payload);
+    upper_transport_pdu = upper_transport_pdu_obj.EncAccessPayload + upper_transport_pdu_obj.TransMIC;
+    console.log("upper_transport_pdu=" + upper_transport_pdu);
+    transmic = upper_transport_pdu_obj.TransMIC;
+    //document.getElementById("trans_mic").innerHTML = "0x" + upper_transport_pdu_obj.TransMIC;
+
+    // derive lower transport PDU
+    lower_transport_pdu = this.deriveLowerTransportPdu(upper_transport_pdu_obj);
+    console.log("lower_transport_pdu=" + lower_transport_pdu);
+
+    // encrypt network PDU
+    hex_dst = this.dst; //TBD?? //document.getElementById('dst').value;
+    secured_network_pdu = this.deriveSecureNetworkLayer(hex_dst, lower_transport_pdu);
+    console.log("EncDST=" + JSON.stringify(secured_network_pdu.EncDST) + " EncTransportPDU=" + JSON.stringify(secured_network_pdu.EncTransportPDU));
+    netmic = secured_network_pdu.NetMIC;
+    //document.getElementById("net_mic").innerHTML = "0x" + secured_network_pdu.NetMIC;
+
+    // obfuscate
+    obfuscated = this.obfuscateNetworkPdu(secured_network_pdu);
+    console.log("obfuscated_ctl_ttl_seq_src=" + JSON.stringify(obfuscated.obfuscated_ctl_ttl_seq_src));
+
+    // finalise network PDU
+    finalised_network_pdu = this.finaliseNetworkPdu(this.ivi, this.hex_nid, obfuscated.obfuscated_ctl_ttl_seq_src, secured_network_pdu.EncDST, secured_network_pdu.EncTransportPDU, network_pdu.NetMIC);
+    console.log("finalised_network_pdu=" + finalised_network_pdu);
+    //document.getElementById("network_pdu_hex").innerHTML = "0x" + finalised_network_pdu;
+    //document.getElementById('hdg_network_pdu').innerHTML = "Network PDU - " + (finalised_network_pdu.length / 2) + " octets";
+
+    // finalise proxy PDU
+    proxy_pdu = this.finaliseProxyPdu(finalised_network_pdu);
+    console.log("proxy_pdu=" + proxy_pdu);
+    //document.getElementById('proxy_pdu_hex').innerHTML = "0x" + proxy_pdu;
+    //document.getElementById('hdg_proxy_pdu').innerHTML = "Proxy PDU - " + (proxy_pdu.length / 2) + " octets";
+
+    if (proxy_pdu.length > (this.mtu * 2)) { // hex chars
+        console.log("Segmentation required (PDU length > MTU)");
+        //app.showMessageRed("Segmentation required ( PDU length > MTU)");
+        //alert("Segmentation required ( PDU length > MTU)");
+        valid_pdu = false;
+        //app.disableButton('btn_submit');
+
+        proxy_pdu = "";
+    }
+
+    return proxy_pdu;
+}
+
+module.exports = proxyClient;
+
+
+
+
+
+
+
+
+
+
 
 proxyClient.prototype.parseNetworkPdu = function (network_pdu) {
     
@@ -599,208 +870,5 @@ proxyClient.prototype.parseNetworkPdu = function (network_pdu) {
     
 }
 
-proxyClient.prototype.setFilterType = function (type)
-{
-    this.msg_type = 2;
-    this.ctl = 1;
-    this.ttl = "00";
-    this.dst = "0000";
-
-    var access_payload = "";
-    if((type === 0x00) || (type === 0x01)) {
-        access_payload = "00" + utils.toHex(type, 1); // "00" is filter type op code
-    }
-    else {
-        console.log("Invalid filter type", type);
-    }
-
-    var secured_network_pdu = this.deriveSecureNetworkLayer(this.dst, access_payload);
-    console.log("EncDST=" + JSON.stringify(secured_network_pdu.EncDST) + " EncTransportPDU=" + JSON.stringify(secured_network_pdu.EncTransportPDU));
-
-    var obfuscated = this.obfuscateNetworkPdu(secured_network_pdu);
-    console.log("obfuscated_ctl_ttl_seq_src=" + JSON.stringify(obfuscated.obfuscated_ctl_ttl_seq_src));
-
-    var finalised_network_pdu = this.finaliseNetworkPdu(this.ivi, this.hex_nid, obfuscated.obfuscated_ctl_ttl_seq_src, secured_network_pdu.EncDST, secured_network_pdu.EncTransportPDU, network_pdu.NetMIC);
-    console.log("finalised_network_pdu=" + finalised_network_pdu);
-
-    var proxy_pdu = this.finaliseProxyPdu(finalised_network_pdu);
-    console.log("proxy_pdu=" + proxy_pdu);
-
-    this.chDataIn.write(Buffer.from(proxy_pdu, 'hex'), true, status => {
-        console.log("setFilterType write callback status ", status);
-    });
-}
 
 
-proxyClient.prototype.accessPayloadFilterType = function (type) {
-    var access_payload = "";
-
-    if((type === 0x00) || (type === 0x01)) {
-        access_payload = "00" + utils.toHex(type, 1); // "00" is filter type op code
-    }
-    else {
-        console.log("Invalid filter type", type);
-    }
-
-    return access_payload;
-
-    /*
-    if (document.getElementById("opcode_selection").value == "0000") {
-        access_payload = document.getElementById("access_payload_hex").value;
-    } else {
-        access_payload = document.getElementById("opcode_selection").value;
-        if (access_payload == "8202" || access_payload == "8203") {
-            access_payload = access_payload + document.getElementById("onoff_selection").value;
-            access_payload = access_payload + document.getElementById("tid_hex").value;
-            tt = document.getElementById("trans_time_hex").value;
-            if (tt != "00") {
-                access_payload = access_payload + tt;
-                access_payload = access_payload + document.getElementById("delay_hex").value;
-            }
-        }
-    }
-    return access_payload;
-    */
-};
-
-proxyClient.prototype.deriveSecureUpperTransportPdu = function (access_payload) {
-    upper_trans_pdu = {};
-    switch(this.msg_type) {
-        case 0:
-            // derive Application Nonce (ref 3.8.5.2)
-            app_nonce = "0100" + utils.toHex(this.seq, 3) + this.src + this.dst + this.iv_index;
-            break;
-        case 2:
-            // derive Proxy Nonce (ref 3.8.5.4)
-            app_nonce = "0300" + utils.toHex(this.seq, 3) + this.src + "0000" + this.iv_index;
-            break;
-        default:
-            console.log("Unsupported message type");
-            break;
-    }
-    upper_trans_pdu = crypto.meshAuthEncAccessPayload(this.A, app_nonce, access_payload);
-    return upper_trans_pdu;
-}
-
-proxyClient.prototype.deriveLowerTransportPdu = function (upper_transport_pdu) {
-    lower_transport_pdu = "";
-    // seg=0 (1 bit), akf=1 (1 bit), aid (6 bits) already derived from k4
-    seg_int = parseInt(this.seg, 16);
-    akf_int = parseInt(this.akf, 16);
-    aid_int = parseInt(this.aid, 16);
-    ltpdu1 = (seg_int << 7) | (akf_int << 6) | aid_int;
-    lower_transport_pdu = utils.intToHex(ltpdu1) + upper_transport_pdu.EncAccessPayload + upper_transport_pdu.TransMIC;
-    return lower_transport_pdu;
-};
-
-proxyClient.prototype.deriveSecureNetworkLayer = function (hex_dst, lower_transport_pdu) {
-    network_pdu = "";
-    
-    N = utils.normaliseHex(this.hex_encryption_key);
-
-    if(this.msg_type === 0) {
-        // Network nonce
-        ctl_int = parseInt(this.ctl, 16);
-        ttl_int = parseInt(this.ttl, 16);
-        //ctl_ttl = (ctl_int | ttl_int);
-        ctl_ttl = (ctl_int << 7) | ttl_int;
-        npdu2 = utils.intToHex(ctl_ttl);
-        nonce = "00" + npdu2 + utils.toHex(this.seq, 3) + this.src + "0000" + this.iv_index;
-
-        micSize = 4;
-    }
-    else if(this.msg_type === 2) {
-        // Proxy nonce
-        nonce = "0300" + utils.toHex(this.seq, 3) + this.src + "0000" + this.iv_index;
-
-        micSize = 8;
-    }
-    else {
-        console.log("Error nonce type not implemented!!!");
-    }
-
-    console.log("net_nonce ", nonce);
-    network_pdu = crypto.meshAuthEncNetwork(N, nonce, hex_dst, lower_transport_pdu, micSize);
-    return network_pdu;
-};
-
-proxyClient.prototype.obfuscateNetworkPdu = function (network_pdu) {
-    obfuscated = "";
-    obfuscated = crypto.obfuscate(network_pdu.EncDST, network_pdu.EncTransportPDU, network_pdu.NetMIC,
-        this.ctl, this.ttl, utils.toHex(this.seq, 3), this.src, this.iv_index, this.hex_privacy_key);
-    return obfuscated;
-};
-
-proxyClient.prototype.finaliseNetworkPdu = function (ivi, nid, obfuscated_ctl_ttl_seq_src, enc_dst, enc_transport_pdu, netmic) {
-    ivi_int = parseInt(ivi, 16);
-    nid_int = parseInt(nid, 16);
-    npdu1 = utils.intToHex((ivi_int << 7) | nid_int);
-    netpdu = npdu1 + obfuscated_ctl_ttl_seq_src + enc_dst + enc_transport_pdu + netmic;
-    return netpdu;
-};
-
-proxyClient.prototype.finaliseProxyPdu = function (finalised_network_pdu) {
-    proxy_pdu = "";
-    sm = (this.sar << 6) | this.msg_type;  //TBD msg type
-    i = 0;
-    proxy_pdu = proxy_pdu + utils.intToHex(sm);
-    proxy_pdu = proxy_pdu + finalised_network_pdu;
-    return proxy_pdu;
-};
-
-
-proxyClient.prototype.deriveProxyPdu = function (access_payload) {
-    console.log("deriveProxyPdu");
-    valid_pdu = true;
-    // access payload
-    //access_payload = app.deriveAccessPayload();
-    //console.log("access_payload=" + access_payload);
-
-    // upper transport PDU
-    upper_transport_pdu_obj = this.deriveSecureUpperTransportPdu(access_payload);
-    upper_transport_pdu = upper_transport_pdu_obj.EncAccessPayload + upper_transport_pdu_obj.TransMIC;
-    console.log("upper_transport_pdu=" + upper_transport_pdu);
-    transmic = upper_transport_pdu_obj.TransMIC;
-    //document.getElementById("trans_mic").innerHTML = "0x" + upper_transport_pdu_obj.TransMIC;
-
-    // derive lower transport PDU
-    lower_transport_pdu = this.deriveLowerTransportPdu(upper_transport_pdu_obj);
-    console.log("lower_transport_pdu=" + lower_transport_pdu);
-
-    // encrypt network PDU
-    hex_dst = this.dst; //TBD?? //document.getElementById('dst').value;
-    secured_network_pdu = this.deriveSecureNetworkLayer(hex_dst, lower_transport_pdu);
-    console.log("EncDST=" + JSON.stringify(secured_network_pdu.EncDST) + " EncTransportPDU=" + JSON.stringify(secured_network_pdu.EncTransportPDU));
-    netmic = secured_network_pdu.NetMIC;
-    //document.getElementById("net_mic").innerHTML = "0x" + secured_network_pdu.NetMIC;
-
-    // obfuscate
-    obfuscated = this.obfuscateNetworkPdu(secured_network_pdu);
-    console.log("obfuscated_ctl_ttl_seq_src=" + JSON.stringify(obfuscated.obfuscated_ctl_ttl_seq_src));
-
-    // finalise network PDU
-    finalised_network_pdu = this.finaliseNetworkPdu(this.ivi, this.hex_nid, obfuscated.obfuscated_ctl_ttl_seq_src, secured_network_pdu.EncDST, secured_network_pdu.EncTransportPDU, network_pdu.NetMIC);
-    console.log("finalised_network_pdu=" + finalised_network_pdu);
-    //document.getElementById("network_pdu_hex").innerHTML = "0x" + finalised_network_pdu;
-    //document.getElementById('hdg_network_pdu').innerHTML = "Network PDU - " + (finalised_network_pdu.length / 2) + " octets";
-
-    // finalise proxy PDU
-    proxy_pdu = this.finaliseProxyPdu(finalised_network_pdu);
-    console.log("proxy_pdu=" + proxy_pdu);
-    //document.getElementById('proxy_pdu_hex').innerHTML = "0x" + proxy_pdu;
-    //document.getElementById('hdg_proxy_pdu').innerHTML = "Proxy PDU - " + (proxy_pdu.length / 2) + " octets";
-
-    if (proxy_pdu.length > (this.mtu * 2)) { // hex chars
-        console.log("Segmentation required (PDU length > MTU)");
-        //app.showMessageRed("Segmentation required ( PDU length > MTU)");
-        //alert("Segmentation required ( PDU length > MTU)");
-        valid_pdu = false;
-        //app.disableButton('btn_submit');
-
-        proxy_pdu = "";
-    }
-
-    return proxy_pdu;
-}
-
-module.exports = proxyClient;
