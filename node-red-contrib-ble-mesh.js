@@ -21,7 +21,7 @@ var statusCallback = function (status) {
     case "Off":
         break;
     case "Connected":
-        client.subscribe("55667788");
+        client.subscribe("C001");
         break;
     case "Disconnected":
         break;
