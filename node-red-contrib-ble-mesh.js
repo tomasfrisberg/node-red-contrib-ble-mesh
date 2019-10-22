@@ -13,7 +13,8 @@ var scanCallback = function (device)
     }
 }
 
-var statusCallback = function (status) {
+var timer = {};
+var statusCallback = function (status, data = null) {
     switch(status) {
     case "On":
         client.startScanning(scanCallback);
@@ -21,9 +22,20 @@ var statusCallback = function (status) {
     case "Off":
         break;
     case "Connected":
-        client.subscribe("C001");
+        console.log("Connected");
+        //client.subscribe("C001");
+        //client.publish("013C", "8201", ""); // Get onoff
+        client.publish("013C", "8202", "0100"); // Set onoff, TID
+        //timer = setTimeout(() => {
+        //    client.publish("013C", "8201", ""); // Get onoff
+        //}, 10000);
         break;
     case "Disconnected":
+            console.log("Disconnected");
+        //clearTimeout(timer);
+        break;
+    case "Data":
+        console.log("Data: ", data);
         break;
     case "Error":
         break;
