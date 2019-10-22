@@ -33,3 +33,4 @@ _ReSharper*/
 packages/
 #NPM modules
 node_modules/
+package-lock.json
