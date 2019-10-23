@@ -1,7 +1,7 @@
 var noble = require('@abandonware/noble');
 var utils = require('./utils.js');
-//var CryptoJS = require('./crypto-js-ext/cryptojs-aes.min.js');
 var crypto = require('./crypto.js');
+var debug = require('debug')('ble-mesh-proxy-client');
 
 const  State = {
     OFF: 1,
@@ -74,11 +74,11 @@ function ProxyClient(hexNetKey, hexAppKey, hexSrcAddr, callb)
 
     this.hexSubscribeAddr = "";
 
-    console.log("hex_encryption_key ", this.hex_encryption_key);
-    console.log("hex_privacy_key ", this.hex_privacy_key);
+    debug("hex_encryption_key ", this.hex_encryption_key);
+    debug("hex_privacy_key ", this.hex_privacy_key);
 
     noble.on('stateChange', (state) => {
-        console.log(this.name + ": State " + state);
+        debug(this.name + ": State " + state);
         switch(state) {
             case "poweredOn":
                 if(this.state === State.OFF) {
@@ -97,11 +97,11 @@ function ProxyClient(hexNetKey, hexAppKey, hexSrcAddr, callb)
     });
 
     noble.on('scanStart',  () => {
-        console.log("noble.on: ScanStart");
+        debug("noble.on: ScanStart");
     });
 
     noble.on('scanStop', () => {
-        console.log("noble.on: ScanStop");
+        debug("noble.on: ScanStop");
     });
 
     noble.on('discover', (peripheral) => {
@@ -111,7 +111,7 @@ function ProxyClient(hexNetKey, hexAppKey, hexSrcAddr, callb)
     });
 
     noble.on('warning', (msg) => {
-        console.log("noble.on: Warning " + msg);
+        debug("noble.on: Warning " + msg);
     });
 
     /*
@@ -141,7 +141,7 @@ ProxyClient.prototype.startScanning = function ()
         noble.startScanning(['1828'], true);
     }
     //noble.startScanning([0x1828], true, (errMsg) => {
-    //        console.log(this.name + ": startScanning " + errMsg);
+    //        debug(this.name + ": startScanning " + errMsg);
     //});
 }
 
@@ -162,7 +162,7 @@ ProxyClient.prototype.connect = function(peripheral)
 
         this.peripheral.connect(error => {
             if(!error) {
-                console.log('Connected to', peripheral.advertisement.localName);
+                debug('Connected to', peripheral.advertisement.localName);
 
                 this.peripheral.on('disconnect', () => {
                     this.state = State.ON_IDLE;
@@ -187,12 +187,12 @@ ProxyClient.prototype.connect = function(peripheral)
 
                 this.statusCallback("Disconnected");
 
-                console.log("connect: ", error);
+                debug("connect: ", error);
             }
         });
         break;
     default:
-        console.log("connect: invalid state");
+        debug("connect: invalid state");
         break;
     }
 }
@@ -213,7 +213,7 @@ ProxyClient.prototype.subscribe = function (hexAddr) {
             ok = true;
             break;
         default:
-            console.log("subscribe: Invalid state");
+            debug("subscribe: Invalid state");
             break;
         }
     }
@@ -238,33 +238,33 @@ ProxyClient.prototype.publish = function (hexAddr, hexOpCode, hexPars) {
 
         var upper_transport_pdu_obj = this.deriveSecureUpperTransportPdu(access_payload);
         var upper_transport_pdu = upper_transport_pdu_obj.EncAccessPayload + upper_transport_pdu_obj.TransMIC;
-        console.log("upper_transport_pdu=" + upper_transport_pdu);
+        debug("upper_transport_pdu=" + upper_transport_pdu);
         //transmic = upper_transport_pdu_obj.TransMIC;
 
         // derive lower transport PDU
         var lower_transport_pdu = this.deriveLowerTransportPdu(upper_transport_pdu_obj);
-        console.log("lower_transport_pdu=" + lower_transport_pdu);
+        debug("lower_transport_pdu=" + lower_transport_pdu);
 
         var secured_network_pdu = this.deriveSecureNetworkLayer(this.dst, lower_transport_pdu);
-        console.log("EncDST=" + JSON.stringify(secured_network_pdu.EncDST) + " EncTransportPDU=" + JSON.stringify(secured_network_pdu.EncTransportPDU));
+        debug("EncDST=" + JSON.stringify(secured_network_pdu.EncDST) + " EncTransportPDU=" + JSON.stringify(secured_network_pdu.EncTransportPDU));
 
         var obfuscated = this.obfuscateNetworkPdu(secured_network_pdu);
-        console.log("obfuscated_ctl_ttl_seq_src=" + JSON.stringify(obfuscated.obfuscated_ctl_ttl_seq_src));
+        debug("obfuscated_ctl_ttl_seq_src=" + JSON.stringify(obfuscated.obfuscated_ctl_ttl_seq_src));
 
         var finalised_network_pdu = this.finaliseNetworkPdu(this.ivi, this.hex_nid, obfuscated.obfuscated_ctl_ttl_seq_src, secured_network_pdu.EncDST, secured_network_pdu.EncTransportPDU, network_pdu.NetMIC);
-        console.log("finalised_network_pdu=" + finalised_network_pdu);
+        debug("finalised_network_pdu=" + finalised_network_pdu);
 
         var proxy_pdu = this.finaliseProxyPdu(finalised_network_pdu);
-        console.log("proxy_pdu=" + proxy_pdu);
+        debug("proxy_pdu=" + proxy_pdu);
 
         this.chDataIn.write(Buffer.from(proxy_pdu, 'hex'), true, status => {
-            console.log("setFilterType write callback status ", status);
+            debug("publish write callback status ", status);
         });
 
         ok = true;
     }
     else {
-        console.log("publish: Invalid input params");
+        debug("publish: Invalid input params");
     }
 
     return ok;
@@ -274,7 +274,7 @@ ProxyClient.prototype.publish = function (hexAddr, hexOpCode, hexPars) {
 function onServicesAndCharacteristicsDiscovered(error, services, characteristics)
 {
 
-    console.log("Discovered services and characteristics", error, services.length, characteristics.length);
+    debug("Discovered services and characteristics", error, services.length, characteristics.length);
 
     characteristics.forEach(ch => {
         if(ch.uuid === this.MESH_PROXY_DATA_IN) {
@@ -288,7 +288,7 @@ function onServicesAndCharacteristicsDiscovered(error, services, characteristics
 
             this.chDataOut.subscribe(error => {
                 if(error) {
-                    console.log("Subscribe ", error);
+                    debug("Subscribe ", error);
                 }
             });
 
@@ -308,58 +308,58 @@ function onCharacteristicData(data, isNotification)
         // 1. Extract proxy PDU fields : SAR, msgtype, data
         // -----------------------------------------------------
         var sar_msgtype = data.subarray(0, 1)[0];
-        console.log("sar_msgtype = ", sar_msgtype);
+        debug("sar_msgtype = ", sar_msgtype);
         var sar = (sar_msgtype & 0xC0) >> 6;
         if (sar < 0 || sar > 3) {
-            console.log("SAR contains invalid value. 0-3 allowed. Ref Table 6.2");
+            debug("SAR contains invalid value. 0-3 allowed. Ref Table 6.2");
             return;
         }
         
         var msgtype = sar_msgtype & 0x3F;
         if (msgtype < 0 || msgtype > 3) {
-            console.log("Message Type contains invalid value. 0x00-0x03 allowed. Ref Table 6.3");
+            debug("Message Type contains invalid value. 0x00-0x03 allowed. Ref Table 6.3");
             return;
         }
     
         // See table 3.7 for min length of network PDU and 6.1 for proxy PDU length
         if (data.length < 15) {
-            console.log("PDU is too short (min 15 bytes) - ", data.length, " bytes received");
+            debug("PDU is too short (min 15 bytes) - ", data.length, " bytes received");
             return;
         }
     
         var network_pdu = null;
         network_pdu = data.subarray(1, data.length);
     
-        console.log("Proxy PDU: SAR = ", utils.intToHex(sar), " MSGTYPE = ", utils.intToHex(msgtype), " NETWORK PDU = ", utils.u8AToHexString(network_pdu));
+        debug("Proxy PDU: SAR = ", utils.intToHex(sar), " MSGTYPE = ", utils.intToHex(msgtype), " NETWORK PDU = ", utils.u8AToHexString(network_pdu));
     
         switch(msgtype) {
         case 0x00:
             // Network PDU
-            console.log("Network PDU");
+            debug("Network PDU");
             this.parseNetworkPdu(network_pdu);
             break;
         case 0x01:
             // Mesh beacon
-            console.log("Mesh Beacon");
+            debug("Mesh Beacon");
             this.parseMeshBeacon(network_pdu);
             break;
         case 0x02:
             // Proxy configuration
-            console.log("Proxy Configuration");
+            debug("Proxy Configuration");
             this.parseProxyConfiguration(network_pdu);
             break;
         case 0x03:
             // Provisioning PDU
-            console.log("Provisioning PDU not supported");
+            debug("Provisioning PDU not supported");
             break;
         default:
             // RFU
-            console.log("RFU not supported");
+            debug("RFU not supported");
             break;
         }
     }
     else {
-        console.log("Error: No data received");
+        debug("Error: No data received");
     }
 }
 
@@ -371,7 +371,7 @@ ProxyClient.prototype.parseMeshBeacon = function (network_pdu) {
         //TODO: verify authentication value
 
         if(nId === this.network_id) {
-            console.log("Secure network beacon");
+            debug("Secure network beacon");
 
             this.iv_index = utils.u8AToHexString(network_pdu.subarray(10, 14));
             this.I = utils.normaliseHex(this.iv_index);
@@ -409,7 +409,7 @@ ProxyClient.prototype.networkNonceMicSize = function(msgType, ctl, ttl, hex_seq,
             result.mic_size = 8;
             break;
         default:
-            console.log("ERROR nonce not implemented");
+            debug("ERROR nonce not implemented");
             break;
     }
 
@@ -456,15 +456,15 @@ ProxyClient.prototype.parseProxyConfiguration = function(network_pdu) {
             var hex_filter_type = hex_decrypted.substring(6, 8);
             var hex_list_size = hex_decrypted.substring(8, 12);
 
-            console.log("hex_op_code ", hex_op_code, " hex_filter_type ", hex_filter_type, " hex_list_size ", hex_list_size);
+            debug("hex_op_code ", hex_op_code, " hex_filter_type ", hex_filter_type, " hex_list_size ", hex_list_size);
             break;
         default:
-            console.log("Unknown op code ", hex_op_code);
+            debug("Unknown op code ", hex_op_code);
             break;
         }
     }
     else {
-        console.log("Non-valid destination address ", hex_decrypted.substring(0, 4));
+        debug("Non-valid destination address ", hex_decrypted.substring(0, 4));
     }
 
     switch(this.state) {
@@ -513,19 +513,19 @@ ProxyClient.prototype.deobfuscateNetworkPdu = function (network_pdu) {
     // 3.4.6.3 Receiving a Network PDU
     // Upon receiving a message, the node shall check if the value of the NID field value matches one or more known NIDs
     if (hex_pdu_nid != this.hex_nid) {
-        console.log("unknown nid - discarding");
+        debug("unknown nid - discarding");
         return;
     }
   
-    console.log("enc_dst=" + hex_enc_dst);
-    console.log("enc_transport_pdu=" + hex_enc_transport_pdu);
-    console.log("NetMIC=" + hex_netmic);
+    debug("enc_dst=" + hex_enc_dst);
+    debug("enc_transport_pdu=" + hex_enc_transport_pdu);
+    debug("NetMIC=" + hex_netmic);
   
     // -----------------------------------------------------
     // 2. Deobfuscate network PDU - ref 3.8.7.3
     // -----------------------------------------------------
     hex_privacy_random = crypto.privacyRandom(hex_enc_dst, hex_enc_transport_pdu, hex_netmic);
-    console.log("Privacy Random=" + hex_privacy_random);
+    debug("Privacy Random=" + hex_privacy_random);
   
     deobfuscated = crypto.deobfuscate(hex_obfuscated_ctl_ttl_seq_src, this.iv_index, this.netkey, hex_privacy_random, this.hex_privacy_key);
     
@@ -557,7 +557,7 @@ ProxyClient.prototype.decryptAndVerifyNetworkPdu = function (type, hex_deobfusca
     src_bytes = utils.hexToBytes(hex_pdu_src);
     src_value = src_bytes[0] + (src_bytes[1] << 8);
     if (src_value < 0x0001 || src_value > 0x7FFF) {
-      console.log("SRC is not a valid unicast address. 0x0001-0x7FFF allowed. Ref 3.4.2.2");
+      debug("SRC is not a valid unicast address. 0x0001-0x7FFF allowed. Ref 3.4.2.2");
       return;
     }
   
@@ -566,16 +566,16 @@ ProxyClient.prototype.decryptAndVerifyNetworkPdu = function (type, hex_deobfusca
 
     var sec = this.networkNonceMicSize(type, ctl_int, ttl_int, hex_pdu_seq, hex_pdu_src, this.iv_index);
   
-    console.log("hex_enc_dst=" + hex_deobfuscate.hex_enc_dst);
-    console.log("hex_enc_transport_pdu=" + hex_deobfuscate.hex_enc_transport_pdu);
-    console.log("hex_netmic=" + hex_deobfuscate.hex_netmic);
+    debug("hex_enc_dst=" + hex_deobfuscate.hex_enc_dst);
+    debug("hex_enc_transport_pdu=" + hex_deobfuscate.hex_enc_transport_pdu);
+    debug("hex_netmic=" + hex_deobfuscate.hex_netmic);
   
     hex_enc_network_data = hex_deobfuscate.hex_enc_dst + hex_deobfuscate.hex_enc_transport_pdu + hex_deobfuscate.hex_netmic;
-    console.log("decrypting and verifying network layer: " + hex_enc_network_data + " key: " + this.hex_encryption_key + " nonce: " + sec.hex_nonce);
+    debug("decrypting and verifying network layer: " + hex_enc_network_data + " key: " + this.hex_encryption_key + " nonce: " + sec.hex_nonce);
     result = crypto.decryptAndVerify(this.hex_encryption_key, hex_enc_network_data, sec.hex_nonce, sec.mic_size);
-    console.log("result=" + JSON.stringify(result));
+    debug("result=" + JSON.stringify(result));
     if (result.status == -1) {
-      console.log("ERROR: "+result.error.message);
+      debug("ERROR: "+result.error.message);
       return;
     }
 
@@ -590,11 +590,11 @@ ProxyClient.prototype.decryptAndVerifyNetworkPdu = function (type, hex_deobfusca
 ProxyClient.prototype.decryptAndVerifyAccessPayload = function (hex_pdu_seq, hex_pdu_src, hex_decrypted) {
     var hex_pdu_dst = hex_decrypted.substring(0, 4);
     var lower_transport_pdu = hex_decrypted.substring(4, hex_decrypted.length);
-    console.log("lower_transport_pdu = ", lower_transport_pdu);
+    debug("lower_transport_pdu = ", lower_transport_pdu);
   
     // lower transport layer: 3.5.2.1
     var hex_pdu_seg_akf_aid = lower_transport_pdu.substring(0, 2);
-    console.log("hex_pdu_seg_akf_aid = ", hex_pdu_seg_akf_aid);
+    debug("hex_pdu_seg_akf_aid = ", hex_pdu_seg_akf_aid);
 
     var seg_int = (parseInt(hex_pdu_seg_akf_aid, 16) & 0x80) >> 7;
     var akf_int = (parseInt(hex_pdu_seg_akf_aid, 16) & 0x40) >> 6;
@@ -605,26 +605,26 @@ ProxyClient.prototype.decryptAndVerifyAccessPayload = function (hex_pdu_seq, hex
     var hex_enc_access_payload_transmic = lower_transport_pdu.substring(2, lower_transport_pdu.length);
     var hex_enc_access_payload = hex_enc_access_payload_transmic.substring(0, hex_enc_access_payload_transmic.length - 8);
     var hex_transmic = hex_enc_access_payload_transmic.substring(hex_enc_access_payload_transmic.length - 8, hex_enc_access_payload_transmic.length);
-    console.log("enc_access_payload = ", hex_enc_access_payload);
-    console.log("transmic = ", hex_transmic);
+    debug("enc_access_payload = ", hex_enc_access_payload);
+    debug("transmic = ", hex_transmic);
   
     // access payload: 3.7.3
     // derive Application Nonce (3.8.5.2)
     hex_app_nonce = "0100" + hex_pdu_seq + hex_pdu_src + hex_pdu_dst + this.iv_index;
-    console.log("application nonce=" + hex_app_nonce);
+    debug("application nonce=" + hex_app_nonce);
   
-    console.log("decrypting and verifying access layer: " + hex_enc_access_payload + hex_transmic + " key: " + this.appkey + " nonce: " + hex_app_nonce);
+    debug("decrypting and verifying access layer: " + hex_enc_access_payload + hex_transmic + " key: " + this.appkey + " nonce: " + hex_app_nonce);
     result = crypto.decryptAndVerify(this.appkey, hex_enc_access_payload + hex_transmic, hex_app_nonce, 4);
-    console.log("result = ", JSON.stringify(result));
+    debug("result = ", JSON.stringify(result));
     if (result.status == -1) {
-      console.log("ERROR: ", result.error.message);
+      debug("ERROR: ", result.error.message);
       return;
     }
   
-    console.log("access payload = ", hex_decrypted);
+    debug("access payload = ", hex_decrypted);
   
     var hex_opcode_and_params = this.getOpcodeAndParams(result.hex_decrypted);
-    console.log("hex_opcode_and_params = ", JSON.stringify(hex_opcode_and_params));
+    debug("hex_opcode_and_params = ", JSON.stringify(hex_opcode_and_params));
 
     var res = {};
     res.hex_seq = hex_pdu_seq;
@@ -696,25 +696,25 @@ ProxyClient.prototype.setFilterType = function (type)
         access_payload = "00" + utils.toHex(type, 1); // "00" is filter type op code
 
         var secured_network_pdu = this.deriveSecureNetworkLayer(this.dst, access_payload);
-        console.log("EncDST=" + JSON.stringify(secured_network_pdu.EncDST) + " EncTransportPDU=" + JSON.stringify(secured_network_pdu.EncTransportPDU));
+        debug("EncDST=" + JSON.stringify(secured_network_pdu.EncDST) + " EncTransportPDU=" + JSON.stringify(secured_network_pdu.EncTransportPDU));
 
         var obfuscated = this.obfuscateNetworkPdu(secured_network_pdu);
-        console.log("obfuscated_ctl_ttl_seq_src=" + JSON.stringify(obfuscated.obfuscated_ctl_ttl_seq_src));
+        debug("obfuscated_ctl_ttl_seq_src=" + JSON.stringify(obfuscated.obfuscated_ctl_ttl_seq_src));
 
         var finalised_network_pdu = this.finaliseNetworkPdu(this.ivi, this.hex_nid, obfuscated.obfuscated_ctl_ttl_seq_src, secured_network_pdu.EncDST, secured_network_pdu.EncTransportPDU, network_pdu.NetMIC);
-        console.log("finalised_network_pdu=" + finalised_network_pdu);
+        debug("finalised_network_pdu=" + finalised_network_pdu);
 
         var proxy_pdu = this.finaliseProxyPdu(finalised_network_pdu);
-        console.log("proxy_pdu=" + proxy_pdu);
+        debug("proxy_pdu=" + proxy_pdu);
 
         this.chDataIn.write(Buffer.from(proxy_pdu, 'hex'), true, status => {
-            console.log("setFilterType write callback status ", status);
+            debug("setFilterType write callback status ", status);
         });
 
         ok = true;
     }
     else {
-        console.log("Invalid filter type", type);
+        debug("Invalid filter type", type);
     }
 
     return ok;
@@ -735,19 +735,19 @@ ProxyClient.prototype.setFilterAddr = function (hexAddr)
         var access_payload = "01" + hexAddr;
 
         var secured_network_pdu = this.deriveSecureNetworkLayer(this.dst, access_payload);
-        console.log("EncDST=" + JSON.stringify(secured_network_pdu.EncDST) + " EncTransportPDU=" + JSON.stringify(secured_network_pdu.EncTransportPDU));
+        debug("EncDST=" + JSON.stringify(secured_network_pdu.EncDST) + " EncTransportPDU=" + JSON.stringify(secured_network_pdu.EncTransportPDU));
 
         var obfuscated = this.obfuscateNetworkPdu(secured_network_pdu);
-        console.log("obfuscated_ctl_ttl_seq_src=" + JSON.stringify(obfuscated.obfuscated_ctl_ttl_seq_src));
+        debug("obfuscated_ctl_ttl_seq_src=" + JSON.stringify(obfuscated.obfuscated_ctl_ttl_seq_src));
 
         var finalised_network_pdu = this.finaliseNetworkPdu(this.ivi, this.hex_nid, obfuscated.obfuscated_ctl_ttl_seq_src, secured_network_pdu.EncDST, secured_network_pdu.EncTransportPDU, network_pdu.NetMIC);
-        console.log("finalised_network_pdu=" + finalised_network_pdu);
+        debug("finalised_network_pdu=" + finalised_network_pdu);
 
         var proxy_pdu = this.finaliseProxyPdu(finalised_network_pdu);
-        console.log("proxy_pdu=" + proxy_pdu);
+        debug("proxy_pdu=" + proxy_pdu);
 
         this.chDataIn.write(Buffer.from(proxy_pdu, 'hex'), true, status => {
-            console.log("setFilterType write callback status ", status);
+            debug("setFilterType write callback status ", status);
         });
 
         ok = true;
@@ -768,7 +768,7 @@ ProxyClient.prototype.deriveSecureUpperTransportPdu = function (access_payload) 
             app_nonce = "0300" + utils.toHex(this.seq, 3) + this.src + "0000" + this.iv_index;
             break;
         default:
-            console.log("Unsupported message type");
+            debug("Unsupported message type");
             break;
     }
     upper_trans_pdu = crypto.meshAuthEncAccessPayload(this.A, app_nonce, access_payload);
@@ -808,10 +808,10 @@ ProxyClient.prototype.deriveSecureNetworkLayer = function (hex_dst, lower_transp
         micSize = 8;
     }
     else {
-        console.log("Error nonce type not implemented!!!");
+        debug("Error nonce type not implemented!!!");
     }
 
-    console.log("net_nonce ", nonce);
+    debug("net_nonce ", nonce);
     network_pdu = crypto.meshAuthEncNetwork(N, nonce, hex_dst, lower_transport_pdu, micSize);
     return network_pdu;
 };
@@ -842,48 +842,48 @@ ProxyClient.prototype.finaliseProxyPdu = function (finalised_network_pdu) {
 
 
 ProxyClient.prototype.deriveProxyPdu = function (access_payload) {
-    console.log("deriveProxyPdu");
+    debug("deriveProxyPdu");
     valid_pdu = true;
     // access payload
     //access_payload = app.deriveAccessPayload();
-    //console.log("access_payload=" + access_payload);
+    //debug("access_payload=" + access_payload);
 
     // upper transport PDU
     upper_transport_pdu_obj = this.deriveSecureUpperTransportPdu(access_payload);
     upper_transport_pdu = upper_transport_pdu_obj.EncAccessPayload + upper_transport_pdu_obj.TransMIC;
-    console.log("upper_transport_pdu=" + upper_transport_pdu);
+    debug("upper_transport_pdu=" + upper_transport_pdu);
     transmic = upper_transport_pdu_obj.TransMIC;
     //document.getElementById("trans_mic").innerHTML = "0x" + upper_transport_pdu_obj.TransMIC;
 
     // derive lower transport PDU
     lower_transport_pdu = this.deriveLowerTransportPdu(upper_transport_pdu_obj);
-    console.log("lower_transport_pdu=" + lower_transport_pdu);
+    debug("lower_transport_pdu=" + lower_transport_pdu);
 
     // encrypt network PDU
     hex_dst = this.dst; //TBD?? //document.getElementById('dst').value;
     secured_network_pdu = this.deriveSecureNetworkLayer(hex_dst, lower_transport_pdu);
-    console.log("EncDST=" + JSON.stringify(secured_network_pdu.EncDST) + " EncTransportPDU=" + JSON.stringify(secured_network_pdu.EncTransportPDU));
+    debug("EncDST=" + JSON.stringify(secured_network_pdu.EncDST) + " EncTransportPDU=" + JSON.stringify(secured_network_pdu.EncTransportPDU));
     netmic = secured_network_pdu.NetMIC;
     //document.getElementById("net_mic").innerHTML = "0x" + secured_network_pdu.NetMIC;
 
     // obfuscate
     obfuscated = this.obfuscateNetworkPdu(secured_network_pdu);
-    console.log("obfuscated_ctl_ttl_seq_src=" + JSON.stringify(obfuscated.obfuscated_ctl_ttl_seq_src));
+    debug("obfuscated_ctl_ttl_seq_src=" + JSON.stringify(obfuscated.obfuscated_ctl_ttl_seq_src));
 
     // finalise network PDU
     finalised_network_pdu = this.finaliseNetworkPdu(this.ivi, this.hex_nid, obfuscated.obfuscated_ctl_ttl_seq_src, secured_network_pdu.EncDST, secured_network_pdu.EncTransportPDU, network_pdu.NetMIC);
-    console.log("finalised_network_pdu=" + finalised_network_pdu);
+    debug("finalised_network_pdu=" + finalised_network_pdu);
     //document.getElementById("network_pdu_hex").innerHTML = "0x" + finalised_network_pdu;
     //document.getElementById('hdg_network_pdu').innerHTML = "Network PDU - " + (finalised_network_pdu.length / 2) + " octets";
 
     // finalise proxy PDU
     proxy_pdu = this.finaliseProxyPdu(finalised_network_pdu);
-    console.log("proxy_pdu=" + proxy_pdu);
+    debug("proxy_pdu=" + proxy_pdu);
     //document.getElementById('proxy_pdu_hex').innerHTML = "0x" + proxy_pdu;
     //document.getElementById('hdg_proxy_pdu').innerHTML = "Proxy PDU - " + (proxy_pdu.length / 2) + " octets";
 
     if (proxy_pdu.length > (this.mtu * 2)) { // hex chars
-        console.log("Segmentation required (PDU length > MTU)");
+        debug("Segmentation required (PDU length > MTU)");
         //app.showMessageRed("Segmentation required ( PDU length > MTU)");
         //alert("Segmentation required ( PDU length > MTU)");
         valid_pdu = false;
@@ -925,15 +925,15 @@ proxyClient.prototype.parseNetworkPdu = function (network_pdu) {
     //hex_netmic = utils.intToHex(netmic);
     hex_netmic = utils.u8AToHexString(netmic);
   
-    console.log("enc_dst=" + hex_enc_dst);
-    console.log("enc_transport_pdu=" + hex_enc_transport_pdu);
-    console.log("NetMIC=" + hex_netmic);
+    debug("enc_dst=" + hex_enc_dst);
+    debug("enc_transport_pdu=" + hex_enc_transport_pdu);
+    debug("NetMIC=" + hex_netmic);
   
     // -----------------------------------------------------
     // 2. Deobfuscate network PDU - ref 3.8.7.3
     // -----------------------------------------------------
     hex_privacy_random = crypto.privacyRandom(hex_enc_dst, hex_enc_transport_pdu, hex_netmic);
-    console.log("Privacy Random=" + hex_privacy_random);
+    debug("Privacy Random=" + hex_privacy_random);
   
     deobfuscated = crypto.deobfuscate(hex_obfuscated_ctl_ttl_seq_src, this.iv_index, this.netkey, hex_privacy_random, this.hex_privacy_key);
     hex_ctl_ttl_seq_src = deobfuscated.ctl_ttl_seq_src;
@@ -941,7 +941,7 @@ proxyClient.prototype.parseNetworkPdu = function (network_pdu) {
     // 3.4.6.3 Receiving a Network PDU
     // Upon receiving a message, the node shall check if the value of the NID field value matches one or more known NIDs
     if (hex_pdu_nid != this.hex_nid) {
-      console.log("unknown nid - discarding");
+      debug("unknown nid - discarding");
       return;
     }
   
@@ -967,33 +967,33 @@ proxyClient.prototype.parseNetworkPdu = function (network_pdu) {
     src_bytes = utils.hexToBytes(hex_pdu_src);
     src_value = src_bytes[0] + (src_bytes[1] << 8);
     if (src_value < 0x0001 || src_value > 0x7FFF) {
-      console.log("SRC is not a valid unicast address. 0x0001-0x7FFF allowed. Ref 3.4.2.2");
+      debug("SRC is not a valid unicast address. 0x0001-0x7FFF allowed. Ref 3.4.2.2");
       return;
     }
   
     ctl_int = (parseInt(hex_pdu_ctl_ttl, 16) & 0x80) >> 7;
     ttl_int = parseInt(hex_pdu_ctl_ttl, 16) & 0x7F;
   
-    console.log("hex_enc_dst=" + hex_enc_dst);
-    console.log("hex_enc_transport_pdu=" + hex_enc_transport_pdu);
-    console.log("hex_netmic=" + hex_netmic);
+    debug("hex_enc_dst=" + hex_enc_dst);
+    debug("hex_enc_transport_pdu=" + hex_enc_transport_pdu);
+    debug("hex_netmic=" + hex_netmic);
   
     hex_enc_network_data = hex_enc_dst + hex_enc_transport_pdu + hex_netmic;
-    console.log("decrypting and verifying network layer: " + hex_enc_network_data + " key: " + this.hex_encryption_key + " nonce: " + hex_nonce);
+    debug("decrypting and verifying network layer: " + hex_enc_network_data + " key: " + this.hex_encryption_key + " nonce: " + hex_nonce);
     result = crypto.decryptAndVerify(hex_encryption_key, hex_enc_network_data, hex_nonce);
-    console.log("result=" + JSON.stringify(result));
+    debug("result=" + JSON.stringify(result));
     if (result.status == -1) {
-      console.log("ERROR: "+result.error.message);
+      debug("ERROR: "+result.error.message);
       return;
     }
   
     hex_pdu_dst = result.hex_decrypted.substring(0, 4);
     lower_transport_pdu = result.hex_decrypted.substring(4, result.hex_decrypted.length);
-    console.log("lower_transport_pdu=" + lower_transport_pdu);
+    debug("lower_transport_pdu=" + lower_transport_pdu);
   
     // lower transport layer: 3.5.2.1
     hex_pdu_seg_akf_aid = lower_transport_pdu.substring(0, 2);
-    console.log("hex_pdu_seg_akf_aid=" + hex_pdu_seg_akf_aid);
+    debug("hex_pdu_seg_akf_aid=" + hex_pdu_seg_akf_aid);
     seg_int = (parseInt(hex_pdu_seg_akf_aid, 16) & 0x80) >> 7;
     akf_int = (parseInt(hex_pdu_seg_akf_aid, 16) & 0x40) >> 6;
     aid_int = parseInt(hex_pdu_seg_akf_aid, 16) & 0x3F;
@@ -1003,56 +1003,56 @@ proxyClient.prototype.parseNetworkPdu = function (network_pdu) {
     hex_enc_access_payload_transmic = lower_transport_pdu.substring(2, lower_transport_pdu.length);
     hex_enc_access_payload = hex_enc_access_payload_transmic.substring(0, hex_enc_access_payload_transmic.length - 8);
     hex_transmic = hex_enc_access_payload_transmic.substring(hex_enc_access_payload_transmic.length - 8, hex_enc_access_payload_transmic.length);
-    console.log("enc_access_payload=" + hex_enc_access_payload);
-    console.log("transmic=" + hex_transmic);
+    debug("enc_access_payload=" + hex_enc_access_payload);
+    debug("transmic=" + hex_transmic);
   
     // access payload: 3.7.3
     // derive Application Nonce (3.8.5.2)
     hex_app_nonce = "0100" + hex_pdu_seq + hex_pdu_src + hex_pdu_dst + this.iv_index;
-    console.log("application nonce=" + hex_app_nonce);
+    debug("application nonce=" + hex_app_nonce);
   
-    console.log("decrypting and verifying access layer: " + hex_enc_access_payload + hex_transmic + " key: " + hex_appkey + " nonce: " + hex_app_nonce);
+    debug("decrypting and verifying access layer: " + hex_enc_access_payload + hex_transmic + " key: " + hex_appkey + " nonce: " + hex_app_nonce);
     result = crypto.decryptAndVerify(hex_appkey, hex_enc_access_payload + hex_transmic, hex_app_nonce);
-    console.log("result=" + JSON.stringify(result));
+    debug("result=" + JSON.stringify(result));
     if (result.status == -1) {
-      console.log("ERROR: "+result.error.message);
+      debug("ERROR: "+result.error.message);
       return;
     }
   
-    console.log("access payload=" + result.hex_decrypted);
+    debug("access payload=" + result.hex_decrypted);
   
     hex_opcode_and_params = utils.getOpcodeAndParams(result.hex_decrypted);
-    console.log("hex_opcode_and_params=" + JSON.stringify(hex_opcode_and_params));
+    debug("hex_opcode_and_params=" + JSON.stringify(hex_opcode_and_params));
     hex_opcode = hex_opcode_and_params.opcode;
     hex_params = hex_opcode_and_params.params;
     hex_company_code = hex_opcode_and_params.company_code
   
-    console.log(" ");
-    console.log("----------");
-    console.log("Proxy PDU");
-    console.log("  SAR=" + utils.intToHex(sar));
-    console.log("  MESSAGE TYPE=" + utils.intToHex(msgtype));
-    console.log("  NETWORK PDU");
-    console.log("    IVI=" + hex_pdu_ivi);
-    console.log("    NID=" + hex_pdu_nid);
-    console.log("    CTL=" + utils.intToHex(ctl_int));
-    console.log("    TTL=" + utils.intToHex(ttl_int));
-    console.log("    SEQ=" + hex_pdu_seq);
-    console.log("    SRC=" + hex_pdu_src);
-    console.log("    DST=" + hex_pdu_dst);
-    console.log("    Lower Transport PDU");
-    console.log("      SEG=" + utils.intToHex(seg_int));
-    console.log("      AKF=" + utils.intToHex(akf_int));
-    console.log("      AID=" + utils.intToHex(aid_int));
-    console.log("      Upper Transport PDU");
-    console.log("        Access Payload");
-    console.log("          opcode=" + hex_opcode);
+    debug(" ");
+    debug("----------");
+    debug("Proxy PDU");
+    debug("  SAR=" + utils.intToHex(sar));
+    debug("  MESSAGE TYPE=" + utils.intToHex(msgtype));
+    debug("  NETWORK PDU");
+    debug("    IVI=" + hex_pdu_ivi);
+    debug("    NID=" + hex_pdu_nid);
+    debug("    CTL=" + utils.intToHex(ctl_int));
+    debug("    TTL=" + utils.intToHex(ttl_int));
+    debug("    SEQ=" + hex_pdu_seq);
+    debug("    SRC=" + hex_pdu_src);
+    debug("    DST=" + hex_pdu_dst);
+    debug("    Lower Transport PDU");
+    debug("      SEG=" + utils.intToHex(seg_int));
+    debug("      AKF=" + utils.intToHex(akf_int));
+    debug("      AID=" + utils.intToHex(aid_int));
+    debug("      Upper Transport PDU");
+    debug("        Access Payload");
+    debug("          opcode=" + hex_opcode);
     if (hex_company_code != "") {
-      console.log("          company_code=" + hex_company_code);
+      debug("          company_code=" + hex_company_code);
     }
-    console.log("          params=" + hex_params);
-    console.log("        TransMIC=" + hex_transmic);
-    console.log("    NetMIC=" + hex_netmic);
+    debug("          params=" + hex_params);
+    debug("        TransMIC=" + hex_transmic);
+    debug("    NetMIC=" + hex_netmic);
     
 }
 */

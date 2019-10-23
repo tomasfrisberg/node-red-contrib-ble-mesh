@@ -2,6 +2,7 @@ var asmCrypto = require('./asmcrypto.all');
 var aesCmac = require('node-aes-cmac').aesCmac;
 var utils = require('./utils.js');
 var bigInt = require("big-integer");
+var debug = require('debug')('crypto');
 
 var ZERO;
 var k2_salt;
@@ -20,7 +21,7 @@ function getAesCmac(hex_key, hex_message) {
 }
 
 function init() {
-	console.log("initialising crypto variables");
+	debug("initialising crypto variables");
 	ZERO = '00000000000000000000000000000000';
 	k2_salt = s1("736d6b32"); // "smk2"
 	k3_salt = s1("736d6b33"); // "smk3"
@@ -46,7 +47,7 @@ function init() {
 	*/
 
 function e(hex_plaintext, hex_key) {
-	console.log("AEC-ECB(" + hex_plaintext + "," + hex_key + ")");
+	debug("AEC-ECB(" + hex_plaintext + "," + hex_key + ")");
 
 	var hex_padding = "";
 	var ecb_encrypted = asmCrypto.AES_ECB.encrypt(asmCrypto.hex_to_bytes(hex_plaintext), asmCrypto.hex_to_bytes(hex_key), asmCrypto.hex_to_bytes(hex_padding));
@@ -143,7 +144,7 @@ function k4(N) {
 
 // Privacy Random = (EncDST || EncTransportPDU || NetMIC)[0–7]
 function privacyRandom(enc_dst, enc_transport_pdu, netmic) {
-	console.log("privacyRandom(" + enc_dst + "," + enc_transport_pdu + "," + netmic + ")");
+	debug("privacyRandom(" + enc_dst + "," + enc_transport_pdu + "," + netmic + ")");
 	temp = enc_dst + enc_transport_pdu + netmic;
 	if (temp.length >= 14) {
 		return temp.substring(0, 14);
@@ -172,7 +173,7 @@ function decryptAndVerify(hex_key, hex_cipher, hex_nonce, mic_size) {
 }
 
 function deobfuscate(obfuscated_data, iv_index, netkey, privacy_random, privacy_key) {
-	console.log("deobfuscate");
+	debug("deobfuscate");
 
 	var result = {
 		privacy_key: '',

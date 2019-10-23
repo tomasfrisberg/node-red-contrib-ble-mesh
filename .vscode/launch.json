@@ -9,7 +9,8 @@
             "request": "launch",
             "name": "Launch Program",
             "program": "${workspaceFolder}\\node-red-contrib-ble-mesh.js",
-            "env": {"DEBUG": "* node noble.js hci.js usb.js"},
+            //"env": {"DEBUG": "* node noble.js hci.js usb.js ble-mesh-proxy-node.js"},
+            "env": {"DEBUG": "ble-mesh-proxy-node ble-mesh-proxy-client"},
             "outputCapture": "std"
         }
     ]

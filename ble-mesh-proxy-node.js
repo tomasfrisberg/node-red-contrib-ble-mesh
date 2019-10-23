@@ -2,12 +2,12 @@ var ProxyClient = require('./ble-mesh-proxy-client');
 var debug = require('debug')('ble-mesh-proxy-node');
 
 const State = {
-    S_INVALID: 0,
-    S_OFF: 1,
+    S_INVALID: "S_INVALID",
+    S_OFF: "S_OFF",
 
-    S_ON_SCANNING: 10,
-    S_ON_CONNECTING: 11,
-    S_ON_CONNECTED: 12
+    S_ON_SCANNING: "S_ON_SCANNING",
+    S_ON_CONNECTING: "S_ON_CONNECTING",
+    S_ON_CONNECTED: "S_ON_CONNECTED"
 };
 
 function ProxyNode(hexNetKey, hexAppKey, hexSrcAddr, filter, notify) {
@@ -93,7 +93,7 @@ function ProxyNode(hexNetKey, hexAppKey, hexSrcAddr, filter, notify) {
     }
 
     function scanCallback(device) {
-        debug("scanCallback in state ", this.state, ", device ", device);
+        debug("scanCallback in state ", this.state, ", device ", device.advertisement);
         switch(this.state) {
         case State.S_ON_SCANNING:
             if(this.isMatch(device)) {
@@ -142,7 +142,7 @@ ProxyNode.prototype.publish = function(hexAddr, hexOpCode, hexPars) {
 }
 
 ProxyNode.prototype.subscribe = function(hexAddr) {
-    debug("publish in state ", this.state);
+    debug("subscribe in state ", this.state);
     switch(this.state) {
     case State.S_ON_CONNECTED:
         this.proxy.subscribe(hexAddr);
