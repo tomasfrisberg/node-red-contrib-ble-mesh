@@ -17,20 +17,22 @@ const  State = {
     ON_CONNECTED_WAIT_FILTER_ADDR_STATUS: 21
 };
 
-function proxyClient(name, callback)
+function ProxyClient(hexNetKey, hexAppKey, hexSrcAddr, callb)
 {
-    this.name = name;
+    this.name = "no-name";
     this.state = State.OFF;
     this.scanning = false;
-    this.callback = callback;
+    this.statusCallback = callb.statusCallback;
+    this.scanCallback = callb.scanCallback;
+    this.dataCallback = callb.dataCallback;
 
     this.MESH_PROXY_SERVICE = '1828'; //'00001828-0000-1000-8000-00805f9b34fb';
     this.MESH_PROXY_DATA_IN = '2add'; //'00002add-0000-1000-8000-00805f9b34fb';
     this.MESH_PROXY_DATA_OUT = '2ade'; //'00002ade-0000-1000-8000-00805f9b34fb';
 
     this.iv_index = "00000000"; //"12345677";
-    this.netkey = "5F5F6E6F726469635F5F73656D695F5F";
-    this.appkey = "5F116E6F726469635F5F73656D695F5F";
+    this.netkey = hexNetKey; //"5F5F6E6F726469635F5F73656D695F5F";
+    this.appkey = hexAppKey; //"5F116E6F726469635F5F73656D695F5F";
     this.encryption_key = "";
     this.privacy_key = "";
     this.network_id = "";
@@ -43,7 +45,7 @@ function proxyClient(name, callback)
     this.ctl = 0;
     this.ttl = "03";
     this.seq = 40; //460840; // 0x0x07080a 
-    this.src = "1237";
+    this.src = hexSrcAddr; //"1237";
     this.dst = "C105";
     this.seg = 0;
     this.akf = 1;
@@ -81,14 +83,14 @@ function proxyClient(name, callback)
             case "poweredOn":
                 if(this.state === State.OFF) {
                     this.state = State.ON_IDLE;
-                    this.callback("On");
+                    this.statusCallback("On");
                 }
                 break;
             case "poweredOff":
                 if(this.state !== State.OFF) {
                     this.state = State.OFF;
                     this.scanning = false;
-                    this.callback("Off");
+                    this.statusCallback("Off");
                 }
                 break;
             }
@@ -130,10 +132,10 @@ function proxyClient(name, callback)
     */
 }
 
-proxyClient.prototype.startScanning = function (callback)
+ProxyClient.prototype.startScanning = function ()
 {
     if((this.state !== State.OFF) && !this.scanning) {
-        this.scanCallback = callback;
+        //this.scanCallback = callback;
         this.scanning = true;
 
         noble.startScanning(['1828'], true);
@@ -143,7 +145,7 @@ proxyClient.prototype.startScanning = function (callback)
     //});
 }
 
-proxyClient.prototype.stopScanning = function ()
+ProxyClient.prototype.stopScanning = function ()
 {
     if((this.state !== State.OFF) && this.scanning) {
         this.scanning = false;
@@ -151,7 +153,7 @@ proxyClient.prototype.stopScanning = function ()
     }
 }
 
-proxyClient.prototype.connect = function(peripheral)
+ProxyClient.prototype.connect = function(peripheral)
 {
     switch(this.state) {
     case State.ON_IDLE:
@@ -162,7 +164,11 @@ proxyClient.prototype.connect = function(peripheral)
             if(!error) {
                 console.log('Connected to', peripheral.advertisement.localName);
 
-                this.peripheral.on('disconnect', () => console.log('disconnected'));
+                this.peripheral.on('disconnect', () => {
+                    this.state = State.ON_IDLE;
+                    this.peripheral = null;
+                    this.statusCallback("Disconnected");
+                });
             
                 // specify the services and characteristics to discover
                 const serviceUUIDs = [this.MESH_PROXY_SERVICE];
@@ -179,6 +185,8 @@ proxyClient.prototype.connect = function(peripheral)
                 this.state = State.ON_IDLE;
                 this.peripheral = null;
 
+                this.statusCallback("Disconnected");
+
                 console.log("connect: ", error);
             }
         });
@@ -189,7 +197,7 @@ proxyClient.prototype.connect = function(peripheral)
     }
 }
 
-proxyClient.prototype.subscribe = function (hexAddr) {
+ProxyClient.prototype.subscribe = function (hexAddr) {
     var ok = false;
     if((hexAddr.length % 4) === 0) {
         switch(this.state) {
@@ -212,7 +220,7 @@ proxyClient.prototype.subscribe = function (hexAddr) {
     return ok;
 }
 
-proxyClient.prototype.publish = function (hexAddr, hexOpCode, hexPars) {
+ProxyClient.prototype.publish = function (hexAddr, hexOpCode, hexPars) {
 
     var ok = false;
 
@@ -355,7 +363,7 @@ function onCharacteristicData(data, isNotification)
     }
 }
 
-proxyClient.prototype.parseMeshBeacon = function (network_pdu) {
+ProxyClient.prototype.parseMeshBeacon = function (network_pdu) {
     if(network_pdu[0] == 0x01) {
 
         var nId = utils.u8AToHexString(network_pdu.subarray(2, 10));
@@ -382,7 +390,7 @@ proxyClient.prototype.parseMeshBeacon = function (network_pdu) {
     }
 }
 
-proxyClient.prototype.networkNonceMicSize = function(msgType, ctl, ttl, hex_seq, hex_src, hex_iv_index) {
+ProxyClient.prototype.networkNonceMicSize = function(msgType, ctl, ttl, hex_seq, hex_src, hex_iv_index) {
     var result = {};
 
     switch(msgType) {
@@ -408,7 +416,7 @@ proxyClient.prototype.networkNonceMicSize = function(msgType, ctl, ttl, hex_seq,
     return result;
 }
 
-proxyClient.prototype.parseNetworkPdu = function(network_pdu) {
+ProxyClient.prototype.parseNetworkPdu = function(network_pdu) {
 
     var hex_op_code = "";
     var hex_deobfuscate = this.deobfuscateNetworkPdu(network_pdu);
@@ -425,14 +433,14 @@ proxyClient.prototype.parseNetworkPdu = function(network_pdu) {
     switch(this.state) {
     case State.ON_CONNECTED_IDLE:
     case State.ON_CONNECTED_WAIT_FILTER_ADDR_STATUS:
-        this.callback("Data", result);
+        this.dataCallback(result);
         break;
     default:
         break;            
     }
 }
 
-proxyClient.prototype.parseProxyConfiguration = function(network_pdu) {
+ProxyClient.prototype.parseProxyConfiguration = function(network_pdu) {
 
     var hex_op_code = "";
     var hex_deobfuscate = this.deobfuscateNetworkPdu(network_pdu);
@@ -463,7 +471,7 @@ proxyClient.prototype.parseProxyConfiguration = function(network_pdu) {
     case State.ON_CONNECTING_WAIT_FILTER_TYPE_STATUS:
         if(hex_op_code === "03") {
             this.state = State.ON_CONNECTED_IDLE;
-            this.callback("Connected");
+            this.statusCallback("Connected");
         }
         break;
     case State.ON_CONNECTED_WAIT_FILTER_ADDR_STATUS:
@@ -485,7 +493,7 @@ proxyClient.prototype.parseProxyConfiguration = function(network_pdu) {
     }
 }
 
-proxyClient.prototype.deobfuscateNetworkPdu = function (network_pdu) {
+ProxyClient.prototype.deobfuscateNetworkPdu = function (network_pdu) {
     // demarshall obfuscated network pdu
     pdu_ivi = network_pdu.subarray(0, 1)[0] & 0x80;
     pdu_nid = network_pdu.subarray(0, 1)[0] & 0x7F;
@@ -531,7 +539,7 @@ proxyClient.prototype.deobfuscateNetworkPdu = function (network_pdu) {
     return result;
 }
 
-proxyClient.prototype.decryptAndVerifyNetworkPdu = function (type, hex_deobfuscate) {
+ProxyClient.prototype.decryptAndVerifyNetworkPdu = function (type, hex_deobfuscate) {
     // ref 3.8.7.2 Network layer authentication and encryption
   
     // -----------------------------------------------------
@@ -579,7 +587,7 @@ proxyClient.prototype.decryptAndVerifyNetworkPdu = function (type, hex_deobfusca
     return res;
 }
 
-proxyClient.prototype.decryptAndVerifyAccessPayload = function (hex_pdu_seq, hex_pdu_src, hex_decrypted) {
+ProxyClient.prototype.decryptAndVerifyAccessPayload = function (hex_pdu_seq, hex_pdu_src, hex_decrypted) {
     var hex_pdu_dst = hex_decrypted.substring(0, 4);
     var lower_transport_pdu = hex_decrypted.substring(4, hex_decrypted.length);
     console.log("lower_transport_pdu = ", lower_transport_pdu);
@@ -629,7 +637,7 @@ proxyClient.prototype.decryptAndVerifyAccessPayload = function (hex_pdu_seq, hex
     return res;
 }
 
-proxyClient.prototype.getOpcodeAndParams = function(hex_access_payload) {
+ProxyClient.prototype.getOpcodeAndParams = function(hex_access_payload) {
     // ref 3.7.3.1
     result = {
         opcode: "",
@@ -661,7 +669,7 @@ proxyClient.prototype.getOpcodeAndParams = function(hex_access_payload) {
         opcode_part = opcode_part.substring(0, 2);
         opcode = parseInt(opcode_part, 16);
         result.company_code = company_code;
-        result.opcode = utils.toHex(opcode, 3);
+        result.opcode = utils.toHex(opcode, 1);
     } else if (opcode_len == 2) {
         opcode = parseInt(opcode_part, 16);
         result.opcode = utils.toHex(opcode, 2);
@@ -674,7 +682,7 @@ proxyClient.prototype.getOpcodeAndParams = function(hex_access_payload) {
 }
 
 
-proxyClient.prototype.setFilterType = function (type)
+ProxyClient.prototype.setFilterType = function (type)
 {
     var ok = false;
 
@@ -712,7 +720,7 @@ proxyClient.prototype.setFilterType = function (type)
     return ok;
 }
 
-proxyClient.prototype.setFilterAddr = function (hexAddr)
+ProxyClient.prototype.setFilterAddr = function (hexAddr)
 {
     var ok = false;
 
@@ -748,7 +756,7 @@ proxyClient.prototype.setFilterAddr = function (hexAddr)
     return ok;
 }
 
-proxyClient.prototype.deriveSecureUpperTransportPdu = function (access_payload) {
+ProxyClient.prototype.deriveSecureUpperTransportPdu = function (access_payload) {
     upper_trans_pdu = {};
     switch(this.msg_type) {
         case 0:
@@ -767,7 +775,7 @@ proxyClient.prototype.deriveSecureUpperTransportPdu = function (access_payload) 
     return upper_trans_pdu;
 }
 
-proxyClient.prototype.deriveLowerTransportPdu = function (upper_transport_pdu) {
+ProxyClient.prototype.deriveLowerTransportPdu = function (upper_transport_pdu) {
     lower_transport_pdu = "";
     // seg=0 (1 bit), akf=1 (1 bit), aid (6 bits) already derived from k4
     seg_int = parseInt(this.seg, 16);
@@ -778,7 +786,7 @@ proxyClient.prototype.deriveLowerTransportPdu = function (upper_transport_pdu) {
     return lower_transport_pdu;
 };
 
-proxyClient.prototype.deriveSecureNetworkLayer = function (hex_dst, lower_transport_pdu) {
+ProxyClient.prototype.deriveSecureNetworkLayer = function (hex_dst, lower_transport_pdu) {
     network_pdu = "";
     
     N = utils.normaliseHex(this.hex_encryption_key);
@@ -808,14 +816,14 @@ proxyClient.prototype.deriveSecureNetworkLayer = function (hex_dst, lower_transp
     return network_pdu;
 };
 
-proxyClient.prototype.obfuscateNetworkPdu = function (network_pdu) {
+ProxyClient.prototype.obfuscateNetworkPdu = function (network_pdu) {
     obfuscated = "";
     obfuscated = crypto.obfuscate(network_pdu.EncDST, network_pdu.EncTransportPDU, network_pdu.NetMIC,
         this.ctl, this.ttl, utils.toHex(this.seq, 3), this.src, this.iv_index, this.hex_privacy_key);
     return obfuscated;
 };
 
-proxyClient.prototype.finaliseNetworkPdu = function (ivi, nid, obfuscated_ctl_ttl_seq_src, enc_dst, enc_transport_pdu, netmic) {
+ProxyClient.prototype.finaliseNetworkPdu = function (ivi, nid, obfuscated_ctl_ttl_seq_src, enc_dst, enc_transport_pdu, netmic) {
     ivi_int = parseInt(ivi, 16);
     nid_int = parseInt(nid, 16);
     npdu1 = utils.intToHex((ivi_int << 7) | nid_int);
@@ -823,7 +831,7 @@ proxyClient.prototype.finaliseNetworkPdu = function (ivi, nid, obfuscated_ctl_tt
     return netpdu;
 };
 
-proxyClient.prototype.finaliseProxyPdu = function (finalised_network_pdu) {
+ProxyClient.prototype.finaliseProxyPdu = function (finalised_network_pdu) {
     proxy_pdu = "";
     sm = (this.sar << 6) | this.msg_type;  //TBD msg type
     i = 0;
@@ -833,7 +841,7 @@ proxyClient.prototype.finaliseProxyPdu = function (finalised_network_pdu) {
 };
 
 
-proxyClient.prototype.deriveProxyPdu = function (access_payload) {
+ProxyClient.prototype.deriveProxyPdu = function (access_payload) {
     console.log("deriveProxyPdu");
     valid_pdu = true;
     // access payload
@@ -887,7 +895,7 @@ proxyClient.prototype.deriveProxyPdu = function (access_payload) {
     return proxy_pdu;
 }
 
-module.exports = proxyClient;
+module.exports = ProxyClient;
 
 
 

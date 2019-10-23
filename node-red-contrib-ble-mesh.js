@@ -1,46 +1,26 @@
-var proxyClient = require('./ble-mesh-proxy-client');
+var ProxyNode = require('./ble-mesh-proxy-node');
 
-var scanCallback = function (device)
+var filter = {
+    name: "nRF5x Mesh"
+}
+
+var callback = function(status, data = null)
 {
-    console.log(device.advertisement.localName + " " + device.address + " " + device.rssi);
+    console.log("callback: status ", status, ", data ", data);
 
-    if(device.advertisement.localName && (device.advertisement.localName.length > 0))
-    //if(device.advertisement.localName.includes("u-blox Mesh #30")) {
-    if(device.advertisement.localName.includes("nRF5x Mesh")) {
-        client.stopScanning();
-
-        client.connect(device);
-    }
-}
-
-var timer = {};
-var statusCallback = function (status, data = null) {
     switch(status) {
-    case "On":
-        client.startScanning(scanCallback);
-        break;
-    case "Off":
-        break;
     case "Connected":
-        console.log("Connected");
-        //client.subscribe("C001");
-        //client.publish("013C", "8201", ""); // Get onoff
-        client.publish("013C", "8202", "0100"); // Set onoff, TID
-        //timer = setTimeout(() => {
-        //    client.publish("013C", "8201", ""); // Get onoff
-        //}, 10000);
-        break;
-    case "Disconnected":
-            console.log("Disconnected");
-        //clearTimeout(timer);
-        break;
-    case "Data":
-        console.log("Data: ", data);
-        break;
-    case "Error":
+        //proxyNode.publish("013C", "8202", "0100"); // Set onoff, TID
+        //proxyNode.publish("013C", "8202", "0000"); // Set onoff, TID
+        proxyNode.subscribe("C001");
         break;
     }
 }
 
-var client = new proxyClient("myName", statusCallback);
-console.log(client.name);
+var proxyNode = proxyNode = new ProxyNode(
+    "5F5F6E6F726469635F5F73656D695F5F",
+    "5F116E6F726469635F5F73656D695F5F",
+    "1114",
+    filter,
+    callback);
+
