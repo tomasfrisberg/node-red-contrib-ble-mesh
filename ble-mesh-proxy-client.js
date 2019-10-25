@@ -7,6 +7,7 @@ const  State = {
     OFF: 1,
 
     ON_IDLE: 2,
+    ON_WAIT_DISCONNECT: 3,
 
     ON_CONNECTING_WAIT_CONNECT: 10,
     ON_CONNECTING_WAIT_DISCOVER: 11,
@@ -84,36 +85,32 @@ function ProxyClient(hexNetKey, hexAppKey, hexSrcAddr, callb)
     noble.on('stateChange', (state) => {
         debug(this.name + ": State " + state);
         switch(state) {
-            case "poweredOn":
-                if(this.state === State.OFF) {
-                    this.state = State.ON_IDLE;
-                    this.statusCallback("On");
-                }
-                break;
-            case "poweredOff":
-                if(this.state !== State.OFF) {
-                    this.state = State.OFF;
-                    this.scanning = false;
-                    this.statusCallback("Off");
-                }
-                break;
+        case "poweredOn":
+            if(this.state === State.OFF) {
+                this.state = State.ON_IDLE;
+                this.statusCallback("On");
             }
+            break;
+        case "poweredOff":
+            if(this.state !== State.OFF) {
+                this.state = State.OFF;
+                this.scanning = false;
+                this.statusCallback("Off");
+            }
+            break;
+        }
     });
-
     noble.on('scanStart',  () => {
         debug("noble.on: ScanStart");
     });
-
     noble.on('scanStop', () => {
         debug("noble.on: ScanStop");
     });
-
     noble.on('discover', (peripheral) => {
         if(this.scanCallback && this.scanning) {
             this.scanCallback(peripheral);
         }
     });
-
     noble.on('warning', (msg) => {
         debug("noble.on: Warning " + msg);
     });
@@ -140,6 +137,12 @@ ProxyClient.prototype.isOn = function() {
     var on = false;
     if(this.state !== State.OFF) {
         on = true;
+    }
+    else {
+        if(noble.state === "poweredOn") {
+            this.state = State.ON_IDLE;
+            on = true;
+        }
     }
     return on;
 }
@@ -174,28 +177,43 @@ ProxyClient.prototype.connect = function(peripheral)
 
         this.peripheral.connect(error => {
             if(!error) {
-                debug('Connected to', peripheral.advertisement.localName);
-
-                this.peripheral.on('disconnect', () => {
+                this.peripheral.once('disconnect', () => {
                     this.state = State.ON_IDLE;
                     this.peripheral = null;
+                    this.chDataIn = null;
+                    this.chDataOut = null;
                     this.statusCallback("Disconnected");
                 });
-            
-                // specify the services and characteristics to discover
-                const serviceUUIDs = [this.MESH_PROXY_SERVICE];
-                const characteristicUUIDs = [this.MESH_PROXY_DATA_IN, this.MESH_PROXY_DATA_OUT];
-            
-                this.state = State.ON_CONNECTING_WAIT_DISCOVER;
-                this.peripheral.discoverSomeServicesAndCharacteristics(
-                    serviceUUIDs,
-                    characteristicUUIDs,
-                    onServicesAndCharacteristicsDiscovered.bind(this)
-                ); 
+
+                debug('Connected to', peripheral.advertisement.localName);
+
+                if(this.state === State.ON_CONNECTING_WAIT_CONNECT) {
+                    // specify the services and characteristics to discover
+                    const serviceUUIDs = [this.MESH_PROXY_SERVICE];
+                    const characteristicUUIDs = [this.MESH_PROXY_DATA_IN, this.MESH_PROXY_DATA_OUT];
+                
+                    this.state = State.ON_CONNECTING_WAIT_DISCOVER;
+                    this.peripheral.discoverSomeServicesAndCharacteristics(
+                        serviceUUIDs,
+                        characteristicUUIDs,
+                        onServicesAndCharacteristicsDiscovered.bind(this)
+                    ); 
+                }
+                else {
+                    this.peripheral.disconnect();
+                    if(State.ON_WAIT_DISCONNECT) {
+                        this.state = State.ON_IDLE;
+                    }
+                    else {
+                        debug("Warning: Connect in unexpected state " + this.state);
+                    }
+                }
             }
             else {
                 this.state = State.ON_IDLE;
                 this.peripheral = null;
+                this.chDataIn = null;
+                this.chDataOut = null;
 
                 this.statusCallback("Disconnected");
 
@@ -211,14 +229,15 @@ ProxyClient.prototype.connect = function(peripheral)
 
 ProxyClient.prototype.disconnect = function() {
     switch(this.state) {
-        case State.ON_CONNECTING_WAIT_CONNECT:
         case State.ON_CONNECTING_WAIT_DISCOVER:
-        case State.ON_CONNECTING_WAIT_SECURE_NETWORK_BEACON:
+            this.state = State.ON_WAIT_DISCONNECT;
+            break;
+        case State.ON_CONNECTING_WAIT_CONNECT:
         case State.ON_CONNECTING_WAIT_FILTER_TYPE_STATUS:
+        case State.ON_CONNECTING_WAIT_SECURE_NETWORK_BEACON:
         case State.ON_CONNECTED_IDLE:
         case State.ON_CONNECTED_WAIT_FILTER_ADDR_STATUS:
             this.peripheral.disconnect();
-            this.peripheral = null;
             this.state = State.ON_IDLE;
             break;
     }
@@ -300,28 +319,38 @@ ProxyClient.prototype.publish = function (hexAddr, hexOpCode, hexPars) {
 
 function onServicesAndCharacteristicsDiscovered(error, services, characteristics)
 {
+    switch(this.state) {
+    case State.ON_CONNECTING_WAIT_DISCOVER:
+        debug("Discovered services and characteristics", error, services.length, characteristics.length);
 
-    debug("Discovered services and characteristics", error, services.length, characteristics.length);
+        characteristics.forEach(ch => {
+            if(ch.uuid === this.MESH_PROXY_DATA_IN) {
+                this.chDataIn = ch;
+            }
+            if(ch.uuid === this.MESH_PROXY_DATA_OUT) {
+                this.chDataOut = ch;
 
-    characteristics.forEach(ch => {
-        if(ch.uuid === this.MESH_PROXY_DATA_IN) {
-            this.chDataIn = ch;
-        }
-        if(ch.uuid === this.MESH_PROXY_DATA_OUT) {
-            this.chDataOut = ch;
+                this.chDataOut.on("data", onCharacteristicData.bind(this));
+                //this.chDataOut.on('read', onCharacteristicData.bind(this));
 
-            this.chDataOut.on("data", onCharacteristicData.bind(this));
-            //this.chDataOut.on('read', onCharacteristicData.bind(this));
+                this.chDataOut.subscribe(error => {
+                    if(error) {
+                        debug("Subscribe ", error);
+                    }
+                });
 
-            this.chDataOut.subscribe(error => {
-                if(error) {
-                    debug("Subscribe ", error);
-                }
-            });
-
-            this.state = State.ON_CONNECTING_WAIT_SECURE_NETWORK_BEACON;
-        }
-    });
+                this.state = State.ON_CONNECTING_WAIT_SECURE_NETWORK_BEACON;
+            }
+        });
+        break;
+    case State.ON_WAIT_DISCONNECT:
+        this.peripheral.disconnect();
+        this.state = State.ON_IDLE;
+        break;
+    default:
+        debug("onServicesAndCharacteristicsDiscovered: Warning unexpected state " + this.state);
+        break;
+    }
 }
 
 function onCharacteristicData(data, isNotification)

@@ -5,9 +5,13 @@ const State = {
     S_INVALID: "S_INVALID",
     S_OFF: "S_OFF",
 
+    S_ON_IDLE: "S_ON_IDLE",
+
     S_ON_SCANNING: "S_ON_SCANNING",
     S_ON_CONNECTING: "S_ON_CONNECTING",
-    S_ON_CONNECTED: "S_ON_CONNECTED"
+
+    S_ON_CONNECTED: "S_ON_CONNECTED",
+    S_ON_DISCONNECTING: "S_ON_DISCONNECTING"
 };
 
 function ProxyNode(hexNetKey, hexAppKey, hexSrcAddr, filter, notify) {
@@ -20,9 +24,11 @@ function ProxyNode(hexNetKey, hexAppKey, hexSrcAddr, filter, notify) {
         "dataCallback": dataCallback.bind(this)
     };
 
+    this.state = State.S_INVALID;
     this.notify = notify;
     this.filter = filter;
-    this.state = State.S_OFF;
+
+    this.proxy = new ProxyClient(hexNetKey, hexAppKey, hexSrcAddr, callb);
     
     // Internal state entry functions
     this.entryOff = function() {
@@ -33,7 +39,16 @@ function ProxyNode(hexNetKey, hexAppKey, hexSrcAddr, filter, notify) {
     this.entryOn = function() {
         debug("entryOn");
         this.notify("On");
-        return this.entryOnScanning();
+        return this.entryOnIdle();
+    }
+    this.entryOnIdle = function() {
+        debug("entryOnIdle");
+        this.timer = setTimeout(() => {
+            if(this.state === State.S_ON_IDLE) {
+                this.state = this.entryOnScanning();
+            }
+        }, 1000);
+        return State.S_ON_IDLE;
     }
     this.entryOnScanning = function() {
         debug("entryOnScanning");
@@ -48,6 +63,13 @@ function ProxyNode(hexNetKey, hexAppKey, hexSrcAddr, filter, notify) {
         debug("entryOnConnected");
         return State.S_ON_CONNECTED;
     }
+    this.entryOnDisconnecting = function() {
+        this.proxy.disconnect();
+        return State.S_ON_DISCONNECTING;
+    }
+    this.entryClosed = function() {
+        return State.S_INVALID;
+    }
 
     // Internal callback functions
     function statusCallback(status) {
@@ -57,6 +79,12 @@ function ProxyNode(hexNetKey, hexAppKey, hexSrcAddr, filter, notify) {
         case State.S_OFF:
             if(status === "On") {
                 this.state = this.entryOn();
+            }
+            break;
+        case State.S_ON_IDLE:
+            if(status === "Off") {
+                clearTimeout(this.timer);
+                this.state = this.entryOff();
             }
             break;
         case State.S_ON_SCANNING:
@@ -86,8 +114,16 @@ function ProxyNode(hexNetKey, hexAppKey, hexSrcAddr, filter, notify) {
                 this.state = this.entryOff();
             }
             break;
+        case State.S_ON_DISCONNECTING:
+            if(status === "Disconnected") {
+                this.notify("Disconnected");
+                this.proxy.close();
+                this.state = this.entryClosed();
+            }
+            break;
         default:
-            throw "Invalid state " + this.state;
+            //throw "Invalid state " + this.state;
+            debug("Ignore status " + status + " in state " + this.state);
             break;
         }
     }
@@ -133,14 +169,20 @@ function ProxyNode(hexNetKey, hexAppKey, hexSrcAddr, filter, notify) {
         }
         return match;
     }
+}
 
-    this.proxy = new ProxyClient(hexNetKey, hexAppKey, hexSrcAddr, callb);
+ProxyNode.prototype.start = function() {
+    debug("start ********");
     if(this.proxy.isOn()) {
         this.state = this.entryOn();
     }
+    else {
+        this.state = this.entryOff();
+    }
 }
 
-ProxyNode.prototype.close = function() {
+ProxyNode.prototype.stop = function() {
+    debug("stop ********");
     switch(this.state) {
         case State.S_ON_SCANNING:
             this.proxy.stopScanning();
@@ -150,7 +192,7 @@ ProxyNode.prototype.close = function() {
             this.proxy.disconnect();
             break;
     }
-    this.state = this.entryOff();
+    this.state = State.S_INVALID;
 }
 
 ProxyNode.prototype.publish = function(hexAddr, hexOpCode, hexPars) {
