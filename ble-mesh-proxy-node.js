@@ -14,25 +14,25 @@ function ProxyNode(hexNetKey, hexAppKey, hexSrcAddr, filter, notify) {
 
     debug("ProxyNode Constructor");
 
-    this.notify = notify;
-    this.filter = filter;
-    this.state = State.S_OFF;
-
     var callb = {
         "statusCallback": statusCallback.bind(this),
         "scanCallback": scanCallback.bind(this),
         "dataCallback": dataCallback.bind(this)
     };
-    this.proxy = new ProxyClient(hexNetKey, hexAppKey, hexSrcAddr, callb);
 
+    this.notify = notify;
+    this.filter = filter;
+    this.state = State.S_OFF;
     
     // Internal state entry functions
     this.entryOff = function() {
         debug("entryOff");
+        this.notify("Off");
         return State.S_OFF;
     }
     this.entryOn = function() {
         debug("entryOn");
+        this.notify("On");
         return this.entryOnScanning();
     }
     this.entryOnScanning = function() {
@@ -123,11 +123,34 @@ function ProxyNode(hexNetKey, hexAppKey, hexSrcAddr, filter, notify) {
     // Internal help functions
     this.isMatch = function(device) {
         var match = false;
-        if(device && device.advertisement.localName && device.advertisement.localName.includes(this.filter.name)) {
-            match = true;
+
+        if(device) {
+            if((this.filter.name === "") ||
+               (device.advertisement.localName && (device.advertisement.localName.includes(this.filter.name)))) {
+                
+                match = true;
+            }
         }
         return match;
     }
+
+    this.proxy = new ProxyClient(hexNetKey, hexAppKey, hexSrcAddr, callb);
+    if(this.proxy.isOn()) {
+        this.state = this.entryOn();
+    }
+}
+
+ProxyNode.prototype.close = function() {
+    switch(this.state) {
+        case State.S_ON_SCANNING:
+            this.proxy.stopScanning();
+            break;
+        case State.S_ON_CONNECTING:
+        case State.S_ON_CONNECTED:
+            this.proxy.disconnect();
+            break;
+    }
+    this.state = this.entryOff();
 }
 
 ProxyNode.prototype.publish = function(hexAddr, hexOpCode, hexPars) {

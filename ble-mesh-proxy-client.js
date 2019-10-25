@@ -77,6 +77,10 @@ function ProxyClient(hexNetKey, hexAppKey, hexSrcAddr, callb)
     debug("hex_encryption_key ", this.hex_encryption_key);
     debug("hex_privacy_key ", this.hex_privacy_key);
 
+    if(noble.state == "poweredOn") {
+        this.state = State.ON_IDLE;
+    }
+
     noble.on('stateChange', (state) => {
         debug(this.name + ": State " + state);
         switch(state) {
@@ -130,6 +134,14 @@ function ProxyClient(hexNetKey, hexAppKey, hexSrcAddr, callb)
     descriptor.once('valueRead', data);
     descriptor.once('valueWrite');
     */
+}
+
+ProxyClient.prototype.isOn = function() {
+    var on = false;
+    if(this.state !== State.OFF) {
+        on = true;
+    }
+    return on;
 }
 
 ProxyClient.prototype.startScanning = function ()
@@ -194,6 +206,21 @@ ProxyClient.prototype.connect = function(peripheral)
     default:
         debug("connect: invalid state");
         break;
+    }
+}
+
+ProxyClient.prototype.disconnect = function() {
+    switch(this.state) {
+        case State.ON_CONNECTING_WAIT_CONNECT:
+        case State.ON_CONNECTING_WAIT_DISCOVER:
+        case State.ON_CONNECTING_WAIT_SECURE_NETWORK_BEACON:
+        case State.ON_CONNECTING_WAIT_FILTER_TYPE_STATUS:
+        case State.ON_CONNECTED_IDLE:
+        case State.ON_CONNECTED_WAIT_FILTER_ADDR_STATUS:
+            this.peripheral.disconnect();
+            this.peripheral = null;
+            this.state = State.ON_IDLE;
+            break;
     }
 }
 
