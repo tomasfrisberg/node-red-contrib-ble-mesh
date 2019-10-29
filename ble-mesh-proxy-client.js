@@ -3,6 +3,8 @@ var utils = require('./utils.js');
 var crypto = require('./crypto.js');
 var debug = require('debug')('ble-mesh-proxy-client');
 
+//noble._bindings._hci.reset();
+
 const  State = {
     OFF: 1,
 
@@ -78,16 +80,12 @@ function ProxyClient(hexNetKey, hexAppKey, hexSrcAddr, callb)
     debug("hex_encryption_key ", this.hex_encryption_key);
     debug("hex_privacy_key ", this.hex_privacy_key);
 
-    if(noble.state == "poweredOn") {
-        this.state = State.ON_IDLE;
-    }
-
     noble.on('stateChange', (state) => {
-        debug(this.name + ": State " + state);
+        debug("noble.on(stateChange): State " + state);
         switch(state) {
         case "poweredOn":
             if(this.state === State.OFF) {
-                this.state = State.ON_IDLE;
+                this.state = this.entryOnIdle();
                 this.statusCallback("On");
             }
             break;
@@ -102,9 +100,14 @@ function ProxyClient(hexNetKey, hexAppKey, hexSrcAddr, callb)
     });
     noble.on('scanStart',  () => {
         debug("noble.on: ScanStart");
+        this.statusCallback("ScanStart");
     });
     noble.on('scanStop', () => {
         debug("noble.on: ScanStop");
+        if(this.scanning) {
+            throw "Scanning stopped";
+        }
+        this.statusCallback("ScanStop");
     });
     noble.on('discover', (peripheral) => {
         if(this.scanCallback && this.scanning) {
@@ -114,6 +117,16 @@ function ProxyClient(hexNetKey, hexAppKey, hexSrcAddr, callb)
     noble.on('warning', (msg) => {
         debug("noble.on: Warning " + msg);
     });
+    noble.on('error', (msg) => {
+        debug("noble.on: Error " + msg);
+    });
+    this.entryOnIdle = function() {
+        return State.ON_IDLE;
+    }
+
+    if(noble.state == "poweredOn") {
+        this.state = this.entryOnIdle();
+    }
 
     /*
     peripheral.once('connect', callback);
@@ -140,20 +153,35 @@ ProxyClient.prototype.isOn = function() {
     }
     else {
         if(noble.state === "poweredOn") {
-            this.state = State.ON_IDLE;
+            this.state = this.entryOnIdle();
             on = true;
         }
     }
     return on;
 }
 
-ProxyClient.prototype.startScanning = function ()
-{
+ProxyClient.prototype.reset = function() {
+    //noble._bindings._hci.reset();
+    noble.resetRadio();
+    this.peripheral = null;
+    this.chDataIn = null;
+    this.chDataOut = null;
+    this.scanning = false;
+    //this.state = State.OFF;
+    //this.statusCallback("Off");
+}
+
+ProxyClient.prototype.startScanning = function () {
     if((this.state !== State.OFF) && !this.scanning) {
         //this.scanCallback = callback;
         this.scanning = true;
 
-        noble.startScanning(['1828'], true);
+        //noble.startScanning(['1828'], true, (errMsg) => {
+        noble.startScanning(['1828'], true, (errMsg) => {
+            if(errMsg) {
+                throw errMsg;
+            }
+        });
     }
     //noble.startScanning([0x1828], true, (errMsg) => {
     //        debug(this.name + ": startScanning " + errMsg);
@@ -162,23 +190,30 @@ ProxyClient.prototype.startScanning = function ()
 
 ProxyClient.prototype.stopScanning = function ()
 {
-    if((this.state !== State.OFF) && this.scanning) {
+    //if((this.state !== State.OFF) && this.scanning) {
         this.scanning = false;
         noble.stopScanning();
-    }
+    //}
 }
 
 ProxyClient.prototype.connect = function(peripheral)
 {
+    if(!peripheral) {
+        throw "connect: null peripheral";
+    }
     switch(this.state) {
     case State.ON_IDLE:
         this.state = State.ON_CONNECTING_WAIT_CONNECT;
         this.peripheral = peripheral;
 
+        //if(peripheral.state !== "disconnected") {
+        //    throw "Peripheral already connected";
+        //}
+
         this.peripheral.connect(error => {
             if(!error) {
                 this.peripheral.once('disconnect', () => {
-                    this.state = State.ON_IDLE;
+                    this.state = this.entryOnIdle();
                     this.peripheral = null;
                     this.chDataIn = null;
                     this.chDataOut = null;
@@ -200,9 +235,12 @@ ProxyClient.prototype.connect = function(peripheral)
                     ); 
                 }
                 else {
+                    if(this.chDataOut) {
+                        this.chDataOut.unsubscribe();
+                    }
                     this.peripheral.disconnect();
                     if(State.ON_WAIT_DISCONNECT) {
-                        this.state = State.ON_IDLE;
+                        this.state = this.entryOnIdle();
                     }
                     else {
                         debug("Warning: Connect in unexpected state " + this.state);
@@ -210,7 +248,7 @@ ProxyClient.prototype.connect = function(peripheral)
                 }
             }
             else {
-                this.state = State.ON_IDLE;
+                this.state = this.entryOnIdle();
                 this.peripheral = null;
                 this.chDataIn = null;
                 this.chDataOut = null;
@@ -223,11 +261,13 @@ ProxyClient.prototype.connect = function(peripheral)
         break;
     default:
         debug("connect: invalid state");
+        throw "connect: Invalid state";
         break;
     }
 }
 
 ProxyClient.prototype.disconnect = function() {
+    /*
     switch(this.state) {
         case State.ON_CONNECTING_WAIT_DISCOVER:
             this.state = State.ON_WAIT_DISCONNECT;
@@ -238,9 +278,17 @@ ProxyClient.prototype.disconnect = function() {
         case State.ON_CONNECTED_IDLE:
         case State.ON_CONNECTED_WAIT_FILTER_ADDR_STATUS:
             this.peripheral.disconnect();
-            this.state = State.ON_IDLE;
+            this.state = this.entryOnIdle();
             break;
     }
+    */
+    if(this.peripheral) {
+        if(this.chDataOut) {
+            this.chDataOut.unsubscribe();
+        }
+        this.peripheral.disconnect();
+    }
+    this.state = this.entryOnIdle();
 }
 
 ProxyClient.prototype.subscribe = function (hexAddr) {
@@ -344,8 +392,11 @@ function onServicesAndCharacteristicsDiscovered(error, services, characteristics
         });
         break;
     case State.ON_WAIT_DISCONNECT:
+        if(this.chDataOut) {
+            this.chDataOut.unsubscribe();
+        }
         this.peripheral.disconnect();
-        this.state = State.ON_IDLE;
+        this.state = this.entryOnIdle();
         break;
     default:
         debug("onServicesAndCharacteristicsDiscovered: Warning unexpected state " + this.state);

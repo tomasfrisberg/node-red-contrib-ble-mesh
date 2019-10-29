@@ -18,8 +18,12 @@
 
 // Sample Node-RED node file
 
-var ProxyNode = require("./ble-mesh-proxy-node");
+var events = require('events');
+var eventEmitter = new events.EventEmitter();
 
+var utils = require("./utils");
+
+var ProxyNode = require("./ble-mesh-proxy-node");
 var proxyNode = null;
 
 module.exports = function(RED) {
@@ -33,11 +37,15 @@ module.exports = function(RED) {
         RED.nodes.createNode(this,n);
 
         // Store local copies of the node configuration (as defined in the .html)
-        this.address = n.address;
+        this.address = n.address.toLowerCase();
         this.name = n.name;
         this.proxy = n.proxy;
+        this.log("MeshIn: Proxy " + this.proxy);
+        
 
         this.meshProxy = RED.nodes.getNode(this.proxy);
+        this.log("MeshIn: Proxy " + this.meshProxy.name);
+        this.log("MeshIn: Test " + this.meshProxy.test);
 
         // copy "this" object in case we need it in context of callbacks of other functions.
         var node = this;
@@ -47,6 +55,10 @@ module.exports = function(RED) {
         // this message once at startup...
         // Look at other real nodes for some better ideas of what to do....
         this.log(this.name + " is starting using proxy " + this.meshProxy.name);
+        this.status({fill:"red",shape:"dot",text:"BT Off"});
+
+        this.log(this.name + " register listener");
+        eventEmitter.addListener('Status', statusCallback.bind(this));
 
         // respond to inputs....
         this.on('input', function (msg) {
@@ -61,6 +73,53 @@ module.exports = function(RED) {
             // eg: node.client.disconnect();
             this.log(this.name + " is closing");
         });
+
+        function statusCallback(status, data = null) {
+            switch(status) {
+            case "On":
+                this.status({fill:"yellow",shape:"dot",text:"BT On"});
+                break;
+            case "Off":
+                    this.status({fill:"red",shape:"dot",text:"BT Off"});
+                    break;
+            case "Scanning":
+                    this.status({fill:"yellow",shape:"dot",text:"Scanning"});
+                    break;
+            case "Connecting":
+                    this.status({fill:"yellow",shape:"dot",text:"Connecting"});
+                    break;                                          
+            case "Connected":
+                this.status({fill:"green",shape:"dot",text:"connected"});
+                this.meshProxy.subscribe(this.address);
+                break;
+            case "Disconnected":
+                this.status({fill:"red",shape:"ring",text:"disconnected"});
+                break;
+            case "Data":
+                this.log(this.address + " : " + data.hex_dst);
+                if(this.address === data.hex_dst.toLowerCase()) {
+                    this.log("Msg: " + data.hex_params);
+                    var msg = {};
+                    /*
+                    msg.hex_seq = data.hex_seq.slice(0);
+                    msg.hex_src = data.hex_src.slice(0);
+                    msg.hex_dst = data.hex_dst.slice(0);
+                    msg.hex_opcode = data.hex_opcode.slice(0);
+                    msg.hex_company_code = data.hex_company_code.slice(0);
+                    msg.hex_params = data.hex_params.slice(0);
+                    */
+                    msg.seq = utils.hexToBytes(data.hex_seq);
+                    msg.src = utils.hexToBytes(data.hex_src);
+                    msg.dst = utils.hexToBytes(data.hex_dst);
+                    msg.opcode = utils.hexToBytes(data.hex_opcode);
+                    msg.company_code = utils.hexToBytes(data.hex_company_code);
+                    msg.params = utils.hexToBytes(data.hex_params);
+
+                    this.send(msg);
+                }
+                break;
+            }
+        }
     }
 
     // Register the node by name. This must be called before overriding any of the
@@ -73,11 +132,10 @@ module.exports = function(RED) {
         RED.nodes.createNode(this,n);
 
         // Store local copies of the node configuration (as defined in the .html)
-        this.connected = false;
         this.name = n.name;
         this.netkey = n.netkey;
         this.appkey = n.appkey;
-        this.address = n.address;
+        this.address = n.address.toLowerCase();
         this.proxy = n.proxy;
         this.filter = n.filter;
 
@@ -98,11 +156,11 @@ module.exports = function(RED) {
             this.log("App key: " + this.appkey);
             this.log("Local Addr: " + this.address);
             this.log("Device filter: " + this.deviceFilter.name);
-            proxyNode = new ProxyNode(this.netkey, this.appkey, this.address, this.deviceFilter, notify.bind(this));
+            proxyNode = new ProxyNode(this.netkey, this.appkey, this.address, this.deviceFilter);
         }
-        else {
-            node.warn("Proxy node already created");
-        }
+
+        this.log("Start proxy node");
+        proxyNode.start(notify.bind(this));
 
         // respond to inputs....
         this.on('input', function (msg) {
@@ -111,27 +169,31 @@ module.exports = function(RED) {
             node.send(msg);
         });
 
+        this.on("open", function() {
+            this.log(this.name + " is opening");
+        });
+
         this.on("close", function() {
             // Called when the node is shutdown - eg on redeploy.
             // Allows ports to be closed, connections dropped etc.
             // eg: node.client.disconnect();
-            proxyNode.close();
-            proxyNode = null;
             this.log(this.name + " is closing");
+            proxyNode.stop();
+            
+            eventEmitter.emit("Disconnected");
+            eventEmitter.removeAllListeners();
         });
 
         function notify(status, data) {
             this.log("notify(" + this.name + "): Status " + status);
-
-            switch(status) {
-            case "Connected":
-                this.connected = true;
-                break;
-            case "Disconnected":
-                this.connected = false;
-                break;
-            }
+            eventEmitter.emit("Status", status, data);
         }
+
+        this.subscribe = function(addr) {
+            this.log("subscribe: " + addr);
+            proxyNode.subscribe(addr);
+        }
+    
     }
 
     // Register the node by name. This must be called before overriding any of the
