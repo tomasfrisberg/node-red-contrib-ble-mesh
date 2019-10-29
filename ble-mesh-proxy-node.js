@@ -78,6 +78,7 @@ function ProxyNode(hexNetKey, hexAppKey, hexSrcAddr, filter) {
         //this.proxy.stopScanning();
         this.proxy.startScanning();
         this.wdTimer = setTimeout(() => {
+            this.wdTimer = null;
             if(this.state === State.S_ON_SCANNING) {
                 //this.proxy.stopScanning();
                 this.state = this.entryOnIdle();
@@ -88,6 +89,13 @@ function ProxyNode(hexNetKey, hexAppKey, hexSrcAddr, filter) {
     }
     this.entryOnConnecting = function() {
         debug("entryOnConnecting");
+        this.wdTimer = setTimeout(() => {
+            this.wdTimer = null;
+            if(this.state === State.S_ON_CONNECTING) {
+                //this.proxy.stopScanning();
+                this.state = this.entryOnIdle();
+            }
+        }, 5000);
         if(this.notify) {
             this.notify("Connecting");
         }
@@ -95,6 +103,8 @@ function ProxyNode(hexNetKey, hexAppKey, hexSrcAddr, filter) {
     }
     this.entryOnConnected = function() {
         debug("entryOnConnected");
+        clearTimeout(this.wdTimer);
+        this.wdTimer = null;
         //if(this.notify) {
         //    this.notify("Connected");
         //}
