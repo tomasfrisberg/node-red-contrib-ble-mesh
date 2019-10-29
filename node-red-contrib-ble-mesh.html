@@ -111,6 +111,12 @@
     </div>
 
     <br/>
+    <div class="form-row">
+        <label for="node-input-rssi"><i class="fa fa-tag"></i> Rssi Min </label>
+        <input type="text" id="node-input-rssi" placeholder="-75">
+    </div>
+
+    <br/>
     <!-- By convention, most nodes have a 'name' property. The following div -->
     <!-- provides the necessary field. Should always be the last option      -->
     <div class="form-row">
@@ -141,6 +147,7 @@
             appkey:    {value:"", required:true, validate: function (v) { return  (RED.validators.regex(/[0-9A-Fa-f]{32}/) && (v.length === 32)) }},
             address:   {value:"", required:true, validate: function (v) { return  (RED.validators.regex(/[0-9A-Fa-f]{4}/) && (v.length === 4)) }},
             filter:    {value:""},
+            rssi:      {value:"",required:false, validate: RED.validators.number(true)}
             //proxy:     {value:"",required:true}
         },
         inputs:0,               // set the number of inputs - only 0 or 1
@@ -162,6 +169,7 @@
             $("#node-input-appkey").val(this.appkey);
             $("#node-input-address").val(this.address);
             $("#node-input-filter").val(this.filter);
+            $("#node-input-rssi").val(this.rssi);
         },
         oneditsave: function () {
             //this.name = this.baudrate = $("#node-input-name").typedInput('value');
@@ -170,7 +178,7 @@
             this.appkey = $("#node-input-appkey").val();
             this.address = $("#node-input-address").val();
             this.filter = $("#node-input-filter").val();
-
+            this.rssi = $("#node-input-rssi").val();
         }
     });
 </script>

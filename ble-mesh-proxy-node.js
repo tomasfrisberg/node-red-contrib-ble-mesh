@@ -158,7 +158,7 @@ function ProxyNode(hexNetKey, hexAppKey, hexSrcAddr, filter) {
                 //if(this.notify) {
                 //    this.notify("Disconnected");
                 //}
-                this.state = this.entryOnScanning();
+                this.state = this.entryOnIdle();
             }
             else if(status === "Off") {
                 //if(this.notify) {
@@ -227,17 +227,23 @@ function ProxyNode(hexNetKey, hexAppKey, hexSrcAddr, filter) {
         if(device) {
             if((this.filter.name === "") ||
                (device.advertisement.localName && (device.advertisement.localName.includes(this.filter.name)))) {
-                
-                match = true;
+
+                if((this.filter.rssi === "") || (device.rssi >= this.filter.rssi)) {
+                    console.log("RSSI: " + device.rssi + " >= " + this.filter.rssi);
+                    console.log("Matching device: " + device.advertisement.localName);
+                    match = true;
+                }
             }
         }
         return match;
     }
 }
 
-ProxyNode.prototype.start = function(notify) {
+ProxyNode.prototype.start = function(hexNetKey, hexAppKey, hexSrcAddr, filter, notify) {
     debug("start ********");
     this.notify = notify;
+    this.filter = filter;
+    this.proxy.setConfiguration(hexNetKey, hexAppKey, hexSrcAddr);
     /*
     if(this.proxy.isOn()) {
         this.state = this.entryOn();

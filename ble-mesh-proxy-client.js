@@ -171,6 +171,25 @@ ProxyClient.prototype.reset = function() {
     //this.statusCallback("Off");
 }
 
+ProxyClient.prototype.setConfiguration = function(hexNetKey, hexAppKey, hexSrcAddr) {
+    this.netkey = hexNetKey;
+    this.appkey = hexAppKey;
+    this.src = hexSrcAddr;
+
+    this.encryption_key = "";
+    this.privacy_key = "";
+    this.network_id = "";
+
+    this.N = utils.normaliseHex(this.netkey);
+    this.A = utils.normaliseHex(this.appkey);
+    this.k2_material = crypto.k2(this.netkey, "00");
+    this.hex_encryption_key = this.k2_material.encryption_key;
+    this.hex_privacy_key = this.k2_material.privacy_key;
+    this.hex_nid = this.k2_material.NID;
+    this.network_id = crypto.k3(this.netkey);
+    this.aid = crypto.k4(this.appkey);
+}
+
 ProxyClient.prototype.startScanning = function () {
     if((this.state !== State.OFF) && !this.scanning) {
         //this.scanCallback = callback;

@@ -138,9 +138,16 @@ module.exports = function(RED) {
         this.address = n.address.toLowerCase();
         this.proxy = n.proxy;
         this.filter = n.filter;
+        this.rssi = n.rssi;
+
+        this.valRssi = -1000;
+        if(this.rssi) {
+            this.valRssi = parseInt(this.rssi, 10);
+        }
 
         this.deviceFilter = {
-            name: this.filter
+            name: this.filter,
+            rssi: this.valRssi
         };
 
         // copy "this" object in case we need it in context of callbacks of other functions.
@@ -156,11 +163,12 @@ module.exports = function(RED) {
             this.log("App key: " + this.appkey);
             this.log("Local Addr: " + this.address);
             this.log("Device filter: " + this.deviceFilter.name);
+            this.log("Minimum RSSI " + this.rssi);
             proxyNode = new ProxyNode(this.netkey, this.appkey, this.address, this.deviceFilter);
         }
 
         this.log("Start proxy node");
-        proxyNode.start(notify.bind(this));
+        proxyNode.start(this.netkey, this.appkey, this.address, this.deviceFilter, notify.bind(this));
 
         // respond to inputs....
         this.on('input', function (msg) {
