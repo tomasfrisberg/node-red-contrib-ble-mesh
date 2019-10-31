@@ -61,7 +61,8 @@ module.exports = function(RED) {
         eventEmitter.addListener('Status', statusCallback.bind(this));
 
         var status = this.meshProxy.getStatus();
-        (statusCallback.bind(this))(status);
+        var name = this.meshProxy.getProxyServerName();
+        (statusCallback.bind(this))(status, name);
 
         // respond to inputs....
         this.on('input', function (msg) {
@@ -80,10 +81,10 @@ module.exports = function(RED) {
         function statusCallback(status, data = null) {
             switch(status) {
             case "On":
-                this.status({fill:"yellow",shape:"dot",text:"BT On"});
+                this.status({fill:"yellow",shape:"dot",text:"BLE On"});
                 break;
             case "Off":
-                    this.status({fill:"red",shape:"dot",text:"BT Off"});
+                    this.status({fill:"red",shape:"dot",text:"BLE Off"});
                     break;
             case "Scanning":
                     this.status({fill:"yellow",shape:"dot",text:"Scanning"});
@@ -92,7 +93,8 @@ module.exports = function(RED) {
                     this.status({fill:"yellow",shape:"dot",text:"Connecting"});
                     break;                                          
             case "Connected":
-                this.status({fill:"green",shape:"dot",text:"connected"});
+                var txt = data || "Connected";
+                this.status({fill:"green",shape:"dot",text:txt});
                 this.meshProxy.subscribe(this.address);
                 break;
             case "Disconnected":
@@ -160,7 +162,9 @@ module.exports = function(RED) {
         eventEmitter.addListener('Status', statusCallback.bind(this));
 
         var status = this.meshProxy.getStatus();
-        (statusCallback.bind(this))(status);
+        var name = this.meshProxy.getProxyServerName();
+        this.log(name + " : " + status + " : " + name || status);
+        (statusCallback.bind(this))(status, name);
 
         // respond to inputs....
         this.on('input', function (msg) {
@@ -220,10 +224,10 @@ module.exports = function(RED) {
         function statusCallback(status, data = null) {
             switch(status) {
             case "On":
-                this.status({fill:"yellow",shape:"dot",text:"BT On"});
+                this.status({fill:"yellow",shape:"dot",text:"BLE On"});
                 break;
             case "Off":
-                    this.status({fill:"red",shape:"dot",text:"BT Off"});
+                    this.status({fill:"red",shape:"dot",text:"BLE Off"});
                     break;
             case "Scanning":
                     this.status({fill:"yellow",shape:"dot",text:"Scanning"});
@@ -232,7 +236,8 @@ module.exports = function(RED) {
                     this.status({fill:"yellow",shape:"dot",text:"Connecting"});
                     break;                                          
             case "Connected":
-                this.status({fill:"green",shape:"dot",text:"connected"});
+                var txt = data || "Connected";
+                this.status({fill:"green",shape:"dot",text:txt});
                 break;
             case "Disconnected":
                 this.status({fill:"red",shape:"ring",text:"disconnected"});
@@ -331,6 +336,9 @@ module.exports = function(RED) {
     
         this.getStatus = function() {
             return proxyNode.getStatus();
+        }
+        this.getProxyServerName = function() {
+            return proxyNode.getProxyServerName();
         }
     }
 

@@ -200,7 +200,7 @@ function ProxyNode(hexNetKey, hexAppKey, hexSrcAddr, filter) {
                 this.exitOnConnecting();
                 this.state = this.entryOnConnected();
                 if(this.notify) {
-                    this.notify("Connected");
+                    this.notify("Connected", this.device.advertisement.localName);
                 }
             }
             else if(status === "Disconnected") {
@@ -300,6 +300,14 @@ ProxyNode.prototype.getStatus = function() {
         break;
     }
     return status;
+}
+
+ProxyNode.prototype.getProxyServerName = function() {
+    var name = null;
+    if(this.state === State.S_ON_CONNECTED) {
+        name = this.device.advertisement.localName;
+    }
+    return name;
 }
 
 ProxyNode.prototype.start = function(hexNetKey, hexAppKey, hexSrcAddr, filter, notify) {
