@@ -2,6 +2,7 @@ var noble = require('@abandonware/noble');
 var utils = require('./utils.js');
 var crypto = require('./crypto.js');
 var debug = require('debug')('ble-mesh-proxy-client');
+var fs = require("fs");
 
 const  State = {
     OFF: 1,
@@ -20,7 +21,6 @@ const  State = {
 
 function ProxyClient(hexNetKey, hexAppKey, hexSrcAddr, callb)
 {
-    this.name = "no-name";
     this.state = State.OFF;
     this.scanning = false;
     this.statusCallback = callb.statusCallback;
@@ -45,7 +45,7 @@ function ProxyClient(hexNetKey, hexAppKey, hexSrcAddr, callb)
     this.nid = "00";
     this.ctl = 0;
     this.ttl = "03";
-    this.seq = 40; //460840; // 0x0x07080a 
+    this.seq = 0; //460840; // 0x0x07080a 
     this.src = hexSrcAddr; //"1237";
     this.dst = "C105";
     this.seg = 0;
@@ -74,6 +74,8 @@ function ProxyClient(hexNetKey, hexAppKey, hexSrcAddr, callb)
     this.ivi = utils.leastSignificantBit(parseInt(this.I, 16));
 
     this.hexSubscribeAddr = "";
+
+    this.loadCfg(); // Will initialise some of the above variables
 
     debug("hex_encryption_key ", this.hex_encryption_key);
     debug("hex_privacy_key ", this.hex_privacy_key);
@@ -142,6 +144,48 @@ function ProxyClient(hexNetKey, hexAppKey, hexSrcAddr, callb)
     descriptor.once('valueRead', data);
     descriptor.once('valueWrite');
     */
+}
+
+ProxyClient.prototype.storeCfg = function(wait = false) {
+
+    this.cfg = {};
+    this.cfg.seq = this.seq;
+
+    var jsonStr = JSON.stringify(this.cfg);
+    console.log("store: " + jsonStr);
+     
+    if(!wait) {
+        fs.writeFile("ble-mesh.json", jsonStr, 'utf8', function (err) { 
+            console.log("store: " + err);
+            if (err) { 
+                debug("Store error: " + err); 
+            } 
+        }); 
+    }
+    else {
+        fs.writeFileSync("ble-mesh.json", jsonStr, 'utf8');
+    }
+}
+
+
+ProxyClient.prototype.loadCfg = function() {
+    fs.readFile("ble-mesh.json", (err, data) => {
+        // callback function that is called when reading file is done
+        if(err) {
+            debug("load error: " + err);
+            console.log("load error: " + err);
+        }
+        else {
+            console.log(data);
+            if(data && data.length > 0) {
+                this.cfg = JSON.parse(data); 
+                if(this.cfg && this.cfg.seq) {
+                    console.log("seq = " + this.cfg.seq);
+                    this.seq = this.cfg.seq;
+                }
+            }
+        }
+    });
 }
 
 ProxyClient.prototype.isOn = function() {
@@ -1023,165 +1067,3 @@ ProxyClient.prototype.deriveProxyPdu = function (access_payload) {
 }
 
 module.exports = ProxyClient;
-
-
-
-
-
-
-
-
-
-
-/*
-proxyClient.prototype.parseNetworkPdu = function (network_pdu) {
-    
-    // demarshall obfuscated network pdu
-    pdu_ivi = network_pdu.subarray(0, 1)[0] & 0x80;
-    pdu_nid = network_pdu.subarray(0, 1)[0] & 0x7F;
-    obfuscated_ctl_ttl_seq_src = network_pdu.subarray(1, 7);
-    enc_dst = network_pdu.subarray(7, 9);
-    enc_transport_pdu = network_pdu.subarray(9, network_pdu.length - 4);
-    netmic = network_pdu.subarray(network_pdu.length - 4, network_pdu.length);
-  
-    hex_pdu_ivi = utils.intToHex(pdu_ivi);
-    hex_pdu_nid = utils.intToHex(pdu_nid);
-    hex_obfuscated_ctl_ttl_seq_src = utils.u8AToHexString(obfuscated_ctl_ttl_seq_src);
-    hex_enc_dst = utils.u8AToHexString(enc_dst);
-    hex_enc_transport_pdu = utils.u8AToHexString(enc_transport_pdu);
-    //hex_netmic = utils.intToHex(netmic);
-    hex_netmic = utils.u8AToHexString(netmic);
-  
-    debug("enc_dst=" + hex_enc_dst);
-    debug("enc_transport_pdu=" + hex_enc_transport_pdu);
-    debug("NetMIC=" + hex_netmic);
-  
-    // -----------------------------------------------------
-    // 2. Deobfuscate network PDU - ref 3.8.7.3
-    // -----------------------------------------------------
-    hex_privacy_random = crypto.privacyRandom(hex_enc_dst, hex_enc_transport_pdu, hex_netmic);
-    debug("Privacy Random=" + hex_privacy_random);
-  
-    deobfuscated = crypto.deobfuscate(hex_obfuscated_ctl_ttl_seq_src, this.iv_index, this.netkey, hex_privacy_random, this.hex_privacy_key);
-    hex_ctl_ttl_seq_src = deobfuscated.ctl_ttl_seq_src;
-  
-    // 3.4.6.3 Receiving a Network PDU
-    // Upon receiving a message, the node shall check if the value of the NID field value matches one or more known NIDs
-    if (hex_pdu_nid != this.hex_nid) {
-      debug("unknown nid - discarding");
-      return;
-    }
-  
-    hex_enc_dst = utils.bytesToHex(enc_dst);
-    hex_enc_transport_pdu = utils.bytesToHex(enc_transport_pdu);
-    hex_netmic = utils.bytesToHex(netmic);
-  
-  
-    // ref 3.8.7.2 Network layer authentication and encryption
-  
-    // -----------------------------------------------------
-    // 3. Decrypt and verify network PDU - ref 3.8.5.1
-    // -----------------------------------------------------
-  
-
-    hex_pdu_ctl_ttl = hex_ctl_ttl_seq_src.substring(0, 2);
-  
-    hex_pdu_seq = hex_ctl_ttl_seq_src.substring(2, 8);
-    // NB: SEQ should be unique for each PDU received. We don't enforce this rule here to allow for testing with the same values repeatedly.
-  
-    hex_pdu_src = hex_ctl_ttl_seq_src.substring(8, 12);
-    // validate SRC
-    src_bytes = utils.hexToBytes(hex_pdu_src);
-    src_value = src_bytes[0] + (src_bytes[1] << 8);
-    if (src_value < 0x0001 || src_value > 0x7FFF) {
-      debug("SRC is not a valid unicast address. 0x0001-0x7FFF allowed. Ref 3.4.2.2");
-      return;
-    }
-  
-    ctl_int = (parseInt(hex_pdu_ctl_ttl, 16) & 0x80) >> 7;
-    ttl_int = parseInt(hex_pdu_ctl_ttl, 16) & 0x7F;
-  
-    debug("hex_enc_dst=" + hex_enc_dst);
-    debug("hex_enc_transport_pdu=" + hex_enc_transport_pdu);
-    debug("hex_netmic=" + hex_netmic);
-  
-    hex_enc_network_data = hex_enc_dst + hex_enc_transport_pdu + hex_netmic;
-    debug("decrypting and verifying network layer: " + hex_enc_network_data + " key: " + this.hex_encryption_key + " nonce: " + hex_nonce);
-    result = crypto.decryptAndVerify(hex_encryption_key, hex_enc_network_data, hex_nonce);
-    debug("result=" + JSON.stringify(result));
-    if (result.status == -1) {
-      debug("ERROR: "+result.error.message);
-      return;
-    }
-  
-    hex_pdu_dst = result.hex_decrypted.substring(0, 4);
-    lower_transport_pdu = result.hex_decrypted.substring(4, result.hex_decrypted.length);
-    debug("lower_transport_pdu=" + lower_transport_pdu);
-  
-    // lower transport layer: 3.5.2.1
-    hex_pdu_seg_akf_aid = lower_transport_pdu.substring(0, 2);
-    debug("hex_pdu_seg_akf_aid=" + hex_pdu_seg_akf_aid);
-    seg_int = (parseInt(hex_pdu_seg_akf_aid, 16) & 0x80) >> 7;
-    akf_int = (parseInt(hex_pdu_seg_akf_aid, 16) & 0x40) >> 6;
-    aid_int = parseInt(hex_pdu_seg_akf_aid, 16) & 0x3F;
-  
-    // upper transport: 3.6.2
-  
-    hex_enc_access_payload_transmic = lower_transport_pdu.substring(2, lower_transport_pdu.length);
-    hex_enc_access_payload = hex_enc_access_payload_transmic.substring(0, hex_enc_access_payload_transmic.length - 8);
-    hex_transmic = hex_enc_access_payload_transmic.substring(hex_enc_access_payload_transmic.length - 8, hex_enc_access_payload_transmic.length);
-    debug("enc_access_payload=" + hex_enc_access_payload);
-    debug("transmic=" + hex_transmic);
-  
-    // access payload: 3.7.3
-    // derive Application Nonce (3.8.5.2)
-    hex_app_nonce = "0100" + hex_pdu_seq + hex_pdu_src + hex_pdu_dst + this.iv_index;
-    debug("application nonce=" + hex_app_nonce);
-  
-    debug("decrypting and verifying access layer: " + hex_enc_access_payload + hex_transmic + " key: " + hex_appkey + " nonce: " + hex_app_nonce);
-    result = crypto.decryptAndVerify(hex_appkey, hex_enc_access_payload + hex_transmic, hex_app_nonce);
-    debug("result=" + JSON.stringify(result));
-    if (result.status == -1) {
-      debug("ERROR: "+result.error.message);
-      return;
-    }
-  
-    debug("access payload=" + result.hex_decrypted);
-  
-    hex_opcode_and_params = utils.getOpcodeAndParams(result.hex_decrypted);
-    debug("hex_opcode_and_params=" + JSON.stringify(hex_opcode_and_params));
-    hex_opcode = hex_opcode_and_params.opcode;
-    hex_params = hex_opcode_and_params.params;
-    hex_company_code = hex_opcode_and_params.company_code
-  
-    debug(" ");
-    debug("----------");
-    debug("Proxy PDU");
-    debug("  SAR=" + utils.intToHex(sar));
-    debug("  MESSAGE TYPE=" + utils.intToHex(msgtype));
-    debug("  NETWORK PDU");
-    debug("    IVI=" + hex_pdu_ivi);
-    debug("    NID=" + hex_pdu_nid);
-    debug("    CTL=" + utils.intToHex(ctl_int));
-    debug("    TTL=" + utils.intToHex(ttl_int));
-    debug("    SEQ=" + hex_pdu_seq);
-    debug("    SRC=" + hex_pdu_src);
-    debug("    DST=" + hex_pdu_dst);
-    debug("    Lower Transport PDU");
-    debug("      SEG=" + utils.intToHex(seg_int));
-    debug("      AKF=" + utils.intToHex(akf_int));
-    debug("      AID=" + utils.intToHex(aid_int));
-    debug("      Upper Transport PDU");
-    debug("        Access Payload");
-    debug("          opcode=" + hex_opcode);
-    if (hex_company_code != "") {
-      debug("          company_code=" + hex_company_code);
-    }
-    debug("          params=" + hex_params);
-    debug("        TransMIC=" + hex_transmic);
-    debug("    NetMIC=" + hex_netmic);
-    
-}
-*/
-
-

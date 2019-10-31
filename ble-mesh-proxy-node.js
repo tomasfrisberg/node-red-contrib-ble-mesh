@@ -346,6 +346,7 @@ ProxyNode.prototype.start = function(hexNetKey, hexAppKey, hexSrcAddr, filter, n
 ProxyNode.prototype.stop = function() {
     debug("stop ********");
     this.notify = null;
+    this.proxy.storeCfg(true);
 
     //this.proxy.stopScanning();
     //this.proxy.disconnect();
