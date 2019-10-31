@@ -317,9 +317,6 @@ ProxyNode.prototype.start = function(hexNetKey, hexAppKey, hexSrcAddr, filter, n
         this.state = this.entryWaitStart();
         break;  
     default:
-        console.log(hexNetKey + " : " + this.hexNetKey);
-        console.log(filter.name + " : " + this.filter.name);
-        console.log(filter.rssi + " : " + this.filter.rssi);
         if((hexNetKey !== this.hexNetKey) || (hexAppKey !== this.hexAppKey) || (hexSrcAddr !== this.hexSrcAddr) ||
            (filter.name !== this.filter.name) || (filter.rssi !== this.filter.rssi)) {
 

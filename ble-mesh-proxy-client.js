@@ -3,8 +3,6 @@ var utils = require('./utils.js');
 var crypto = require('./crypto.js');
 var debug = require('debug')('ble-mesh-proxy-client');
 
-//noble._bindings._hci.reset();
-
 const  State = {
     OFF: 1,
 
@@ -162,11 +160,14 @@ ProxyClient.prototype.isOn = function() {
 
 ProxyClient.prototype.reset = function() {
     //noble._bindings._hci.reset();
-    noble.resetRadio();
-    this.peripheral = null;
-    this.chDataIn = null;
-    this.chDataOut = null;
-    this.scanning = false;
+    if(noble.resetRadio) {
+        noble.resetRadio();
+
+        this.peripheral = null;
+        this.chDataIn = null;
+        this.chDataOut = null;
+        this.scanning = false;
+    }
     //this.state = State.OFF;
     //this.statusCallback("Off");
 }
