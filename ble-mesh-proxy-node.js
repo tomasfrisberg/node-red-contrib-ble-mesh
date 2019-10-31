@@ -26,6 +26,10 @@ function ProxyNode(hexNetKey, hexAppKey, hexSrcAddr, filter) {
 
     this.state = State.S_INVALID;
     this.notify = null;
+
+    this.hexNetKey = hexNetKey;
+    this.hexAppKey = hexAppKey;
+    this.hexSrcAddr = hexSrcAddr;
     this.filter = filter;
 
     this.proxy = new ProxyClient(hexNetKey, hexAppKey, hexSrcAddr, callb);
@@ -33,6 +37,9 @@ function ProxyNode(hexNetKey, hexAppKey, hexSrcAddr, filter) {
     
     // Internal state entry functions
     this.entryWaitStart = function()  {
+        if(this.notify) {
+            this.notify("Off");
+        }
         setTimeout(() => {
             if(this.state === State.S_WAIT_START) {
                 this.exitWaitStart();
@@ -71,6 +78,9 @@ function ProxyNode(hexNetKey, hexAppKey, hexSrcAddr, filter) {
     }
     this.entryOnIdle = function() {
         debug("entryOnIdle");
+        if(this.notify) {
+            this.notify("On");
+        }
         this.wdTimer = setTimeout(() => {
             if(this.state === State.S_ON_IDLE) {
                 this.wdTimer = null;
@@ -273,26 +283,68 @@ function ProxyNode(hexNetKey, hexAppKey, hexSrcAddr, filter) {
     }
 }
 
+ProxyNode.prototype.getStatus = function() {
+    var status = "Off";
+    switch(this.state) {
+    case State.S_ON_IDLE:
+        status = "On";
+        break;
+    case State.S_ON_SCANNING:
+        status = "Scanning";
+        break;
+    case State.S_ON_CONNECTING:
+        status = "Connecting";
+        break;
+    case State.S_ON_CONNECTED:
+        status = "Connected";
+        break;
+    }
+    return status;
+}
+
 ProxyNode.prototype.start = function(hexNetKey, hexAppKey, hexSrcAddr, filter, notify) {
     debug("start ********");
-    if(this.state !== State.S_INVALID) {
-        throw "Starting in state " + this.state;
-    }
 
     this.notify = notify;
-    this.filter = filter;
-    this.proxy.setConfiguration(hexNetKey, hexAppKey, hexSrcAddr);
+    switch(this.state) {
+    case State.S_INVALID:
+        this.hexNetKey = hexNetKey;
+        this.hexAppKey = hexAppKey;
+        this.hexSrcAddr = hexSrcAddr;
+        this.filter = filter;
 
-   this.state = this.entryWaitStart();
+        this.proxy.setConfiguration(hexNetKey, hexAppKey, hexSrcAddr);
+        this.state = this.entryWaitStart();
+        break;  
+    default:
+        console.log(hexNetKey + " : " + this.hexNetKey);
+        console.log(filter.name + " : " + this.filter.name);
+        console.log(filter.rssi + " : " + this.filter.rssi);
+        if((hexNetKey !== this.hexNetKey) || (hexAppKey !== this.hexAppKey) || (hexSrcAddr !== this.hexSrcAddr) ||
+           (filter.name !== this.filter.name) || (filter.rssi !== this.filter.rssi)) {
+
+            if((this.state === State.S_ON_CONNECTED) || (this.state === State.S_ON_CONNECTING)) {
+                this.proxy.disconnect();
+            }
+
+            this.hexNetKey = hexNetKey;
+            this.hexAppKey = hexAppKey;
+            this.hexSrcAddr = hexSrcAddr;
+            this.filter = filter;
+
+            this.proxy.setConfiguration(hexNetKey, hexAppKey, hexSrcAddr);
+        }
+        break;
+    }
 }
 
 ProxyNode.prototype.stop = function() {
     debug("stop ********");
     this.notify = null;
 
-    this.proxy.stopScanning();
-    this.proxy.disconnect();
-    this.state = State.S_INVALID;
+    //this.proxy.stopScanning();
+    //this.proxy.disconnect();
+    //this.state = State.S_INVALID;
 }
 
 ProxyNode.prototype.publish = function(hexAddr, hexOpCode, hexPars, hexTTL = "04") {

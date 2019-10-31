@@ -36,6 +36,8 @@ module.exports = function(RED) {
         // Create a RED node
         RED.nodes.createNode(this,n);
 
+        this.status({fill:"red",shape:"dot",text:"Off"});
+
         // Store local copies of the node configuration (as defined in the .html)
         this.address = n.address.toLowerCase();
         this.name = n.name;
@@ -55,16 +57,17 @@ module.exports = function(RED) {
         // this message once at startup...
         // Look at other real nodes for some better ideas of what to do....
         this.log(this.name + " is starting using proxy " + this.meshProxy.name);
-        this.status({fill:"red",shape:"dot",text:"BT Off"});
-
         this.log(this.name + " register listener");
         eventEmitter.addListener('Status', statusCallback.bind(this));
+
+        var status = this.meshProxy.getStatus();
+        (statusCallback.bind(this))(status);
 
         // respond to inputs....
         this.on('input', function (msg) {
             node.warn("I saw a payload: "+msg.payload);
             // in this example just send it straight on... should process it here really
-            node.send(msg);
+            this.send(msg);
         });
 
         this.on("close", function() {
@@ -130,6 +133,8 @@ module.exports = function(RED) {
         // Create a RED node
         RED.nodes.createNode(this,n);
 
+        this.status({fill:"red",shape:"dot",text:"Off"});
+
         // Store local copies of the node configuration (as defined in the .html)
         this.address = n.address.toLowerCase();
         this.opcode = n.opcode;
@@ -151,10 +156,11 @@ module.exports = function(RED) {
         // this message once at startup...
         // Look at other real nodes for some better ideas of what to do....
         this.log(this.name + " is starting using proxy " + this.meshProxy.name);
-        this.status({fill:"red",shape:"dot",text:"BT Off"});
-
         this.log(this.name + " register listener");
         eventEmitter.addListener('Status', statusCallback.bind(this));
+
+        var status = this.meshProxy.getStatus();
+        (statusCallback.bind(this))(status);
 
         // respond to inputs....
         this.on('input', function (msg) {
@@ -323,6 +329,9 @@ module.exports = function(RED) {
             proxyNode.publish(hexAddr, hexOpCode, hexPars, hexTTL);
         }
     
+        this.getStatus = function() {
+            return proxyNode.getStatus();
+        }
     }
 
     // Register the node by name. This must be called before overriding any of the
