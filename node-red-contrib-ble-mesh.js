@@ -126,6 +126,122 @@ module.exports = function(RED) {
     // Node functions.
     RED.nodes.registerType("mesh-in",MeshIn);
 
+    function MeshOut(n) {
+        // Create a RED node
+        RED.nodes.createNode(this,n);
+
+        // Store local copies of the node configuration (as defined in the .html)
+        this.address = n.address.toLowerCase();
+        this.opcode = n.opcode;
+        this.params = n.params;
+        this.ttl = n.ttl;
+        this.name = n.name;
+        this.proxy = n.proxy;
+        this.log("MeshOut: Proxy " + this.proxy);
+        
+
+        this.meshProxy = RED.nodes.getNode(this.proxy);
+        this.log("MeshOut: Proxy " + this.meshProxy.name);
+
+        // copy "this" object in case we need it in context of callbacks of other functions.
+        var node = this;
+
+        // Do whatever you need to do in here - declare callbacks etc
+        // Note: this sample doesn't do anything much - it will only send
+        // this message once at startup...
+        // Look at other real nodes for some better ideas of what to do....
+        this.log(this.name + " is starting using proxy " + this.meshProxy.name);
+        this.status({fill:"red",shape:"dot",text:"BT Off"});
+
+        this.log(this.name + " register listener");
+        eventEmitter.addListener('Status', statusCallback.bind(this));
+
+        // respond to inputs....
+        this.on('input', function (msg) {
+            var hexAddr = this.address;
+            var hexOpCode = this.opcode;
+            var hexPars = this.params;
+            var hexTTL = this.ttl;
+            if(msg.address) {
+                if(typeof msg.address === "string") {
+                    hexAddr = msg.address;
+                }
+                else {
+                    hexAddr = utils.bytesToHex(msg.address);
+                }
+            }
+            if(msg.opcode) {
+                if(typeof msg.opcode === "string") {
+                    hexOpCode = msg.opcode;
+                }
+                else {
+                    hexOpCode = utils.bytesToHex(msg.opcode);
+                }
+            }
+            if(msg.payload) {
+                if(typeof msg.payload === "string") {
+                    hexPars = msg.payload;
+                }
+                else {
+                    hexPars = utils.bytesToHex(msg.payload);
+                }
+            }
+            else if(msg.params) {
+                if(typeof msg.params === "string") {
+                    hexPars = msg.params;
+                }
+                else {
+                    hexPars = utils.bytesToHex(msg.params);
+                }
+            }
+            if(msg.ttl && (typeof msg.ttl === "number")) {
+                hexTTL = utils.toHex(msg.ttl);
+            }
+            if(hexTTL.length % 2 !== 0) {
+                hexTTL = "0" + hexTTL;
+            }
+            this.log(hexTTL + " : " + this.ttl);
+            this.meshProxy.publish(hexAddr, hexOpCode, hexPars, hexTTL);
+        });
+
+        this.on("close", function() {
+            // Called when the node is shutdown - eg on redeploy.
+            // Allows ports to be closed, connections dropped etc.
+            // eg: node.client.disconnect();
+            this.log(this.name + " is closing");
+        });
+
+        function statusCallback(status, data = null) {
+            switch(status) {
+            case "On":
+                this.status({fill:"yellow",shape:"dot",text:"BT On"});
+                break;
+            case "Off":
+                    this.status({fill:"red",shape:"dot",text:"BT Off"});
+                    break;
+            case "Scanning":
+                    this.status({fill:"yellow",shape:"dot",text:"Scanning"});
+                    break;
+            case "Connecting":
+                    this.status({fill:"yellow",shape:"dot",text:"Connecting"});
+                    break;                                          
+            case "Connected":
+                this.status({fill:"green",shape:"dot",text:"connected"});
+                break;
+            case "Disconnected":
+                this.status({fill:"red",shape:"ring",text:"disconnected"});
+                break;
+            case "Data":
+                // Ignore
+                break;
+            }
+        }
+    }
+
+    // Register the node by name. This must be called before overriding any of the
+    // Node functions.
+    RED.nodes.registerType("mesh-out",MeshOut);
+
 
     function MeshProxy(n) {
         // Create a RED node
@@ -200,6 +316,11 @@ module.exports = function(RED) {
         this.subscribe = function(addr) {
             this.log("subscribe: " + addr);
             proxyNode.subscribe(addr);
+        }
+
+        this.publish = function(hexAddr, hexOpCode, hexPars, hexTTL) {
+            this.log("Publish: Addr " + hexAddr + ", Op Code " + hexOpCode + ", Pars " + hexPars + ", TTL " + hexTTL);
+            proxyNode.publish(hexAddr, hexOpCode, hexPars, hexTTL);
         }
     
     }

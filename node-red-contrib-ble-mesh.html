@@ -87,6 +87,101 @@
     });
 </script>
 
+<script type="text/x-red" data-template-name="mesh-out">
+    <!-- data-template-name identifies the node type this is for              -->
+ 
+    <!-- Each of the following divs creates a field in the edit dialog.       -->
+    <!-- Generally, there should be an input for each property of the node.   -->
+    <!-- The for and id attributes identify the corresponding property        -->
+    <!-- (with the 'node-input-' prefix).                                     -->
+    <!-- The available icon classes are defined Font Awesome Icons (FA Icons) -->
+     <div class="form-row">
+         <label for="node-input-proxy"><i class="fa fa-tasks"></i> Proxy Server </label>
+         <input type="text" id="node-input-proxy">    
+     </div>
+ 
+     <br/>
+     <div class="form-row">
+         <label for="node-input-address"><i class="fa fa-tag"></i> Address </label>
+         <input type="text" id="node-input-address" placeholder="013C">
+     </div>
+
+     <br/>
+     <div class="form-row">
+         <label for="node-input-opcode"><i class="fa fa-tag"></i> Op Code </label>
+         <input type="text" id="node-input-opcode" placeholder="8202">
+     </div>
+
+     <br/>
+     <div class="form-row">
+        <label for="node-input-ttl"><i class="fa fa-tag"></i> TTL </label>
+        <input type="text" id="node-input-ttl" placeholder="3">
+     </div>
+
+     <br/>
+     <div class="form-row">
+         <label for="node-input-params"><i class="fa fa-tag"></i> Params </label>
+         <input type="text" id="node-input-params" placeholder="0100">
+     </div>
+ 
+     <br/>
+     <!-- By convention, most nodes have a 'name' property. The following div -->
+     <!-- provides the necessary field. Should always be the last option      -->
+     <div class="form-row">
+         <label for="node-input-name"><i class="fa fa-tag"></i> Name</label>
+         <input type="text" id="node-input-name" placeholder="Name">
+     </div>
+     
+ </script>
+ 
+ 
+ <!-- Next, some simple help text is provided for the node.                   -->
+ <script type="text/x-red" data-help-name="mesh-out">
+    <!-- data-help-name identifies the node type this help is for             -->
+    <!-- This content appears in the Info sidebar when a node is selected     -->
+    <!-- The first <p> is used as the pop-up tool tip when hovering over a    -->
+    <!-- node in the palette.                                                 -->
+    <p>Simple sample input node. Just sends a single message when it starts up.
+    This is not very useful.</p>
+    <p>Outputs an object called <code>msg</code> containing <code>msg.topic</code> and
+    <code>msg.payload</code>. msg.payload is a String.</p>
+ </script>
+ 
+ <!-- Finally, the node type is registered along with all of its properties   -->
+ <!-- The example below shows a small subset of the properties that can be set-->
+ <script type="text/javascript">
+     RED.nodes.registerType('mesh-out',{
+        category: 'input',      // the palette category
+        defaults: {             // defines the editable properties of the node
+            name:       {value:""},   //  along with default values.
+            address:    {value:"", required:true, validate: function (v) { return  (RED.validators.regex(/[0-9A-Fa-f]{4}/) && (v.length === 4)) }},
+            opcode:     {value:"", required:true, validate: function (v) { return  (RED.validators.regex(/[0-9A-Fa-f]/)) }},
+            params:     {value:"", required:false, validate: function (v) { return  (RED.validators.regex(/[0-9A-Fa-f]/)) }},
+            ttl:        {value:"",  required:true, validate: RED.validators.number(true)},
+            proxy:      { type:"mesh-proxy", required:true}
+        },
+        inputs:1,               // set the number of inputs - only 0 or 1
+        outputs:0,              // set the number of outputs - 0 to n
+        color: "#ddd",          // set icon color
+        // set the icon (held in icons dir below where you save the node)
+        icon: "myicon.png",     // saved in  icons/myicon.png
+        label: function() {     // sets the default label contents
+            return this.name||this.address||"mesh-out";
+        },
+        labelStyle: function() { // sets the class to apply to the label
+            return this.name?"node_label_italic":"";
+        },
+        oneditprepare: function () {
+            $("#node-input-ttl").val(this.ttl);
+        },
+        oneditsave: function () {
+            //this.name = this.baudrate = $("#node-input-name").typedInput('value');
+            //this.ttl = $("#node-input-ttl").val();
+        }
+     });
+ </script>
+ 
+
 <script type="text/x-red" data-template-name="mesh-proxy">
     <div class="form-row">
         <label for="node-input-netkey"><i class="fa fa-tasks"></i> Net Key</label>

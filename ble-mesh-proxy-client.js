@@ -333,7 +333,7 @@ ProxyClient.prototype.subscribe = function (hexAddr) {
     return ok;
 }
 
-ProxyClient.prototype.publish = function (hexAddr, hexOpCode, hexPars) {
+ProxyClient.prototype.publish = function (hexAddr, hexOpCode, hexPars, hexTTL = "04") {
 
     var ok = false;
 
@@ -343,7 +343,7 @@ ProxyClient.prototype.publish = function (hexAddr, hexOpCode, hexPars) {
 
         this.msg_type = 0;  // Network PDU
         this.ctl = 0;       // Access message
-        this.ttl = "04";    
+        this.ttl = hexTTL;    
         this.dst = hexAddr;
         this.seq = this.seq + 1; // TODO: ??
 

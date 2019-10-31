@@ -12,7 +12,6 @@ const State = {
     S_ON_CONNECTING: "S_ON_CONNECTING",
 
     S_ON_CONNECTED: "S_ON_CONNECTED",
-    S_ON_DISCONNECTING: "S_ON_DISCONNECTING"
 };
 
 function ProxyNode(hexNetKey, hexAppKey, hexSrcAddr, filter) {
@@ -34,8 +33,9 @@ function ProxyNode(hexNetKey, hexAppKey, hexSrcAddr, filter) {
     
     // Internal state entry functions
     this.entryWaitStart = function()  {
-        this.timer = setTimeout(() => {
-            if(this.state == State.S_WAIT_START) {
+        setTimeout(() => {
+            if(this.state === State.S_WAIT_START) {
+                this.exitWaitStart();
                 if(this.proxy.isOn()) {
                     this.state = this.entryOn();
                 }
@@ -43,8 +43,11 @@ function ProxyNode(hexNetKey, hexAppKey, hexSrcAddr, filter) {
                     this.state = this.entryOff();
                 }
             }
-        }, 5000);
+        }, 2000);
         return State.S_WAIT_START;
+    }
+    this.exitWaitStart = function() {
+
     }
     this.entryOff = function() {
         debug("entryOff");
@@ -53,6 +56,9 @@ function ProxyNode(hexNetKey, hexAppKey, hexSrcAddr, filter) {
         }
         return State.S_OFF;
     }
+    this.exitOff = function() {
+
+    }
     this.entryOn = function() {
         debug("entryOn");
         if(this.notify) {
@@ -60,68 +66,96 @@ function ProxyNode(hexNetKey, hexAppKey, hexSrcAddr, filter) {
         }
         return this.entryOnIdle();
     }
+    this.exitOn = function() {
+
+    }
     this.entryOnIdle = function() {
         debug("entryOnIdle");
-        this.proxy.reset();
+        this.wdTimer = setTimeout(() => {
+            if(this.state === State.S_ON_IDLE) {
+                this.wdTimer = null;
+                this.proxy.reset();
+            }
+        }, 2000);
+        
         this.timer = setTimeout(() => {
             if(this.state === State.S_ON_IDLE) {
+                this.timer = null;
+                this.exitOnIdle();
                 this.state = this.entryOnScanning();
             }
         }, 3000);
         return State.S_ON_IDLE;
+    }
+    this.exitOnIdle = function() {
+        if(this.timer) {
+            clearTimeout(this.timer);
+            this.timer = null;
+        }
+        if(this.wdTimer) {
+            clearTimeout(this.wdTimer);
+            this.wdTimer = null;
+        }
     }
     this.entryOnScanning = function() {
         debug("entryOnScanning");
         if(this.notify) {
             this.notify("Scanning");
         }
-        //this.proxy.stopScanning();
         this.proxy.startScanning();
         this.wdTimer = setTimeout(() => {
-            this.wdTimer = null;
             if(this.state === State.S_ON_SCANNING) {
-                //this.proxy.stopScanning();
+                this.wdTimer = null;
+                this.exitOnScanning();
                 this.state = this.entryOnIdle();
             }
         }, 5000);
 
         return State.S_ON_SCANNING;
     }
+    this.exitOnScanning = function() {
+        if(this.wdTimer) {
+            clearTimeout(this.wdTimer);
+            this.wdTimer = null;
+        }
+    }
     this.entryOnConnecting = function() {
         debug("entryOnConnecting");
-        this.wdTimer = setTimeout(() => {
-            this.wdTimer = null;
+        this.timer = setTimeout(() => {
             if(this.state === State.S_ON_CONNECTING) {
-                //this.proxy.stopScanning();
-                this.state = this.entryOnIdle();
+                this.timer = null;
+                this.proxy.connect(this.device);
             }
-        }, 5000);
+        }, 2000);
+        
+        this.wdTimer = setTimeout(() => {
+            if(this.state === State.S_ON_CONNECTING) {
+                this.wdTimer = null;
+                this.proxy.disconnect();
+            }
+        }, 12000);
         if(this.notify) {
             this.notify("Connecting");
         }
         return State.S_ON_CONNECTING;
     }
+    this.exitOnConnecting = function() {
+        if(this.wdTimer) {
+            clearTimeout(this.wdTimer);
+            this.wdTimer = null;
+        }
+        if(this.timer) {
+            clearTimeout(this.timer);
+            this.timer = null;
+        }
+    }
     this.entryOnConnected = function() {
         debug("entryOnConnected");
-        clearTimeout(this.wdTimer);
-        this.wdTimer = null;
-        //if(this.notify) {
-        //    this.notify("Connected");
-        //}
+
         return State.S_ON_CONNECTED;
     }
-    this.entryOnDisconnecting = function() {
-        this.proxy.disconnect();
-        if(this.notify) {
-            this.notify("Disconnecting");
-        }
-        return State.S_ON_DISCONNECTING;
-    }
-    this.entryClosed = function() {
-        if(this.notify) {
-            this.notify("Closed");
-        }
-        return State.S_INVALID;
+    this.exitOnConnected = function() {
+
     }
 
     // Internal callback functions
@@ -131,17 +165,19 @@ function ProxyNode(hexNetKey, hexAppKey, hexSrcAddr, filter) {
         switch(this.state) {
         case State.S_OFF:
             if(status === "On") {
+                this.exitOff();
                 this.state = this.entryOn();
             }
             break;
         case State.S_ON_IDLE:
             if(status === "Off") {
-                clearTimeout(this.timer);
+                this.exitOnIdle();
                 this.state = this.entryOff();
             }
             break;
         case State.S_ON_SCANNING:
             if(status === "Off") {
+                this.exitOnScanning();
                 this.state = this.entryOff();
             }
             else if(status === "ScanStart") {
@@ -151,43 +187,32 @@ function ProxyNode(hexNetKey, hexAppKey, hexSrcAddr, filter) {
             break;
         case State.S_ON_CONNECTING:
             if(status === "Connected") {
+                this.exitOnConnecting();
                 this.state = this.entryOnConnected();
                 if(this.notify) {
                     this.notify("Connected");
                 }
             }
             else if(status === "Disconnected") {
+                this.exitOnConnecting();
                 this.state = this.entryOnIdle();
             }
             else if(status === "Off") {
+                this.exitOnConnecting();
                 this.state = this.entryOff();
             }
             break;
         case State.S_ON_CONNECTED:
             if(status === "Disconnected") {
-                //if(this.notify) {
-                //    this.notify("Disconnected");
-                //}
+                this.exitOnConnected();
                 this.state = this.entryOnIdle();
             }
             else if(status === "Off") {
-                //if(this.notify) {
-                //    this.notify("Disconnected");
-                //}
+                this.exitOnConnected();
                 this.state = this.entryOff();
             }
             break;
-        case State.S_ON_DISCONNECTING:
-            if(status === "Disconnected") {
-                // if(this.notify) {
-                //     this.notify("Disconnected");
-                //}
-                this.proxy.close();
-                this.state = this.entryClosed();
-            }
-            break;
         default:
-            //throw "Invalid state " + this.state;
             debug("Ignore status " + status + " in state " + this.state);
             break;
         }
@@ -198,10 +223,9 @@ function ProxyNode(hexNetKey, hexAppKey, hexSrcAddr, filter) {
         switch(this.state) {
         case State.S_ON_SCANNING:
             if(this.isMatch(device)) {
-                clearTimeout(this.wdTimer);
-                this.wdTimer = null;
+                this.exitOnScanning();
                 this.proxy.stopScanning();
-                this.proxy.connect(device);
+                this.device = device;
                 this.state = this.entryOnConnecting();
             }
             else {
@@ -251,45 +275,31 @@ function ProxyNode(hexNetKey, hexAppKey, hexSrcAddr, filter) {
 
 ProxyNode.prototype.start = function(hexNetKey, hexAppKey, hexSrcAddr, filter, notify) {
     debug("start ********");
+    if(this.state !== State.S_INVALID) {
+        throw "Starting in state " + this.state;
+    }
+
     this.notify = notify;
     this.filter = filter;
     this.proxy.setConfiguration(hexNetKey, hexAppKey, hexSrcAddr);
-    /*
-    if(this.proxy.isOn()) {
-        this.state = this.entryOn();
-    }
-    else {
-        this.state = this.entryOff();
-    }
-    */
+
    this.state = this.entryWaitStart();
-   //this.proxy.reset();
 }
 
 ProxyNode.prototype.stop = function() {
     debug("stop ********");
     this.notify = null;
-    /*
-    switch(this.state) {
-        case State.S_ON_SCANNING:
-            this.proxy.stopScanning();
-            break;
-        case State.S_ON_CONNECTING:
-        case State.S_ON_CONNECTED:
-            this.proxy.disconnect();
-            break;
-    }
-    */
+
     this.proxy.stopScanning();
     this.proxy.disconnect();
     this.state = State.S_INVALID;
 }
 
-ProxyNode.prototype.publish = function(hexAddr, hexOpCode, hexPars) {
+ProxyNode.prototype.publish = function(hexAddr, hexOpCode, hexPars, hexTTL = "04") {
     debug("publish in state ", this.state);
     switch(this.state) {
     case State.S_ON_CONNECTED:
-        this.proxy.publish(hexAddr, hexOpCode, hexPars);
+        this.proxy.publish(hexAddr, hexOpCode, hexPars, hexTTL);
         break;
     default:
         break;
