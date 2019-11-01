@@ -243,7 +243,27 @@ module.exports = function(RED) {
                 this.status({fill:"red",shape:"ring",text:"disconnected"});
                 break;
             case "Data":
-                // Ignore
+                if((this.address === data.hex_src.toLowerCase()) &&
+                   (this.meshProxy.address === data.hex_dst.toLowerCase())) {
+                    this.log("Msg: " + data.hex_params);
+                    var msg = {};
+                    /*
+                    msg.hex_seq = data.hex_seq.slice(0);
+                    msg.hex_src = data.hex_src.slice(0);
+                    msg.hex_dst = data.hex_dst.slice(0);
+                    msg.hex_opcode = data.hex_opcode.slice(0);
+                    msg.hex_company_code = data.hex_company_code.slice(0);
+                    msg.hex_params = data.hex_params.slice(0);
+                    */
+                    msg.seq = utils.hexToBytes(data.hex_seq);
+                    msg.src = utils.hexToBytes(data.hex_src);
+                    msg.dst = utils.hexToBytes(data.hex_dst);
+                    msg.opcode = utils.hexToBytes(data.hex_opcode);
+                    msg.company_code = utils.hexToBytes(data.hex_company_code);
+                    msg.params = utils.hexToBytes(data.hex_params);
+
+                    this.send(msg);
+                }
                 break;
             }
         }
