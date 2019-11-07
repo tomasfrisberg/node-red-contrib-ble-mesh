@@ -143,7 +143,7 @@ function ProxyNode(hexNetKey, hexAppKey, hexSrcAddr, filter) {
                 this.wdTimer = null;
                 this.proxy.disconnect();
             }
-        }, 12000);
+        }, 15000);
         if(this.notify) {
             this.notify("Connecting");
         }
