@@ -203,9 +203,9 @@ ProxyClient.prototype.isOn = function() {
 }
 
 ProxyClient.prototype.reset = function() {
-    //noble._bindings._hci.reset();
-    if(noble.resetRadio) {
-        noble.resetRadio();
+    if(noble._bindings && noble._bindings._hci && noble._bindings._hci.reset) {
+        noble._bindings._hci.reset();
+        
 
         this.peripheral = null;
         this.chDataIn = null;
