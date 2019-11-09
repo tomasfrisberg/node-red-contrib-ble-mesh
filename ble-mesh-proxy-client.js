@@ -202,6 +202,7 @@ ProxyClient.prototype.isOn = function() {
 }
 
 ProxyClient.prototype.reset = function() {
+    /*
     if(noble._bindings && noble._bindings._hci && noble._bindings._hci.reset) {
         noble._bindings._hci.reset();
         
@@ -211,8 +212,7 @@ ProxyClient.prototype.reset = function() {
         this.chDataOut = null;
         this.scanning = false;
     }
-    //this.state = State.OFF;
-    //this.statusCallback("Off");
+    */
 }
 
 ProxyClient.prototype.setConfiguration = function(hexNetKey, hexAppKey, hexSrcAddr) {
