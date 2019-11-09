@@ -152,11 +152,11 @@ ProxyClient.prototype.storeCfg = function(wait = false) {
     this.cfg.seq = this.seq;
 
     var jsonStr = JSON.stringify(this.cfg);
-    console.log("store: " + jsonStr);
+    debug("store: " + jsonStr);
      
     if(!wait) {
         fs.writeFile("ble-mesh.json", jsonStr, 'utf8', function (err) { 
-            console.log("store: " + err);
+            debug("store: " + err);
             if (err) { 
                 debug("Store error: " + err); 
             } 
@@ -173,14 +173,13 @@ ProxyClient.prototype.loadCfg = function() {
         // callback function that is called when reading file is done
         if(err) {
             debug("load error: " + err);
-            console.log("load error: " + err);
+            debug("load error: " + err);
         }
         else {
-            console.log(data);
             if(data && data.length > 0) {
                 this.cfg = JSON.parse(data); 
                 if(this.cfg && this.cfg.seq) {
-                    console.log("seq = " + this.cfg.seq);
+                    debug("seq = " + this.cfg.seq);
                     this.seq = this.cfg.seq;
                 }
             }

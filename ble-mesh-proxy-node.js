@@ -273,8 +273,6 @@ function ProxyNode(hexNetKey, hexAppKey, hexSrcAddr, filter) {
                (device.advertisement.localName && (device.advertisement.localName.includes(this.filter.name)))) {
 
                 if((this.filter.rssi === "") || (device.rssi >= this.filter.rssi)) {
-                    console.log("RSSI: " + device.rssi + " >= " + this.filter.rssi);
-                    console.log("Matching device: " + device.advertisement.localName);
                     match = true;
                 }
             }

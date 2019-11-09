@@ -42,12 +42,9 @@ module.exports = function(RED) {
         this.address = n.address.toLowerCase();
         this.name = n.name;
         this.proxy = n.proxy;
-        this.log("MeshIn: Proxy " + this.proxy);
         
 
         this.meshProxy = RED.nodes.getNode(this.proxy);
-        this.log("MeshIn: Proxy " + this.meshProxy.name);
-        this.log("MeshIn: Test " + this.meshProxy.test);
 
         // copy "this" object in case we need it in context of callbacks of other functions.
         var node = this;
@@ -56,8 +53,6 @@ module.exports = function(RED) {
         // Note: this sample doesn't do anything much - it will only send
         // this message once at startup...
         // Look at other real nodes for some better ideas of what to do....
-        this.log(this.name + " is starting using proxy " + this.meshProxy.name);
-        this.log(this.name + " register listener");
         eventEmitter.addListener('Status', statusCallback.bind(this));
 
         var status = this.meshProxy.getStatus();
@@ -101,18 +96,8 @@ module.exports = function(RED) {
                 this.status({fill:"red",shape:"ring",text:"disconnected"});
                 break;
             case "Data":
-                this.log(this.address + " : " + data.hex_dst);
                 if(this.address === data.hex_dst.toLowerCase()) {
-                    this.log("Msg: " + data.hex_params);
                     var msg = {};
-                    /*
-                    msg.hex_seq = data.hex_seq.slice(0);
-                    msg.hex_src = data.hex_src.slice(0);
-                    msg.hex_dst = data.hex_dst.slice(0);
-                    msg.hex_opcode = data.hex_opcode.slice(0);
-                    msg.hex_company_code = data.hex_company_code.slice(0);
-                    msg.hex_params = data.hex_params.slice(0);
-                    */
                     msg.seq = utils.hexToBytes(data.hex_seq);
                     msg.src = utils.hexToBytes(data.hex_src);
                     msg.dst = utils.hexToBytes(data.hex_dst);
@@ -144,11 +129,9 @@ module.exports = function(RED) {
         this.ttl = n.ttl;
         this.name = n.name;
         this.proxy = n.proxy;
-        this.log("MeshOut: Proxy " + this.proxy);
         
 
         this.meshProxy = RED.nodes.getNode(this.proxy);
-        this.log("MeshOut: Proxy " + this.meshProxy.name);
 
         // copy "this" object in case we need it in context of callbacks of other functions.
         var node = this;
@@ -157,13 +140,10 @@ module.exports = function(RED) {
         // Note: this sample doesn't do anything much - it will only send
         // this message once at startup...
         // Look at other real nodes for some better ideas of what to do....
-        this.log(this.name + " is starting using proxy " + this.meshProxy.name);
-        this.log(this.name + " register listener");
         eventEmitter.addListener('Status', statusCallback.bind(this));
 
         var status = this.meshProxy.getStatus();
         var name = this.meshProxy.getProxyServerName();
-        this.log(name + " : " + status + " : " + name || status);
         (statusCallback.bind(this))(status, name);
 
         // respond to inputs....
@@ -210,7 +190,6 @@ module.exports = function(RED) {
             if(hexTTL.length % 2 !== 0) {
                 hexTTL = "0" + hexTTL;
             }
-            this.log(hexTTL + " : " + this.ttl);
             this.meshProxy.publish(hexAddr, hexOpCode, hexPars, hexTTL);
         });
 
@@ -245,16 +224,7 @@ module.exports = function(RED) {
             case "Data":
                 if((this.address === data.hex_src.toLowerCase()) &&
                    (this.meshProxy.address === data.hex_dst.toLowerCase())) {
-                    this.log("Msg: " + data.hex_params);
                     var msg = {};
-                    /*
-                    msg.hex_seq = data.hex_seq.slice(0);
-                    msg.hex_src = data.hex_src.slice(0);
-                    msg.hex_dst = data.hex_dst.slice(0);
-                    msg.hex_opcode = data.hex_opcode.slice(0);
-                    msg.hex_company_code = data.hex_company_code.slice(0);
-                    msg.hex_params = data.hex_params.slice(0);
-                    */
                     msg.seq = utils.hexToBytes(data.hex_seq);
                     msg.src = utils.hexToBytes(data.hex_src);
                     msg.dst = utils.hexToBytes(data.hex_dst);
@@ -314,7 +284,6 @@ module.exports = function(RED) {
             proxyNode = new ProxyNode(this.netkey, this.appkey, this.address, this.deviceFilter);
         }
 
-        this.log("Start proxy node");
         proxyNode.start(this.netkey, this.appkey, this.address, this.deviceFilter, notify.bind(this));
 
         // respond to inputs....
