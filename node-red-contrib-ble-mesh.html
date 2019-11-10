@@ -255,7 +255,13 @@
     <!-- This content appears in the Info sidebar when a node is selected     -->
     <!-- The first <p> is used as the pop-up tool tip when hovering over a    -->
     <!-- node in the palette.                                                 -->
-    <p>Proxy connection configuration</p>
+    <p>Proxy client configuration</p>
+    <p>The proxy client will scan for proxy servers, and if the filter matches the 
+        name of a found proxy server and if the RSSI value is not lower than the 
+        minimum RSSI value allowed, a connection will be setup.</p>
+    <p>If the proxy client configuration is updated, an active connection
+        will be terminated and scanning will start again.
+    </p>
     <list>Configuration:
         <li><code>Net Key</code>: 16-byte hexadecimal network key</li>
         <li><code>App Key</code>: 16-byte hexadecimal application key</li>
