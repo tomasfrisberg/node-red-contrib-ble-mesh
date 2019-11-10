@@ -30,13 +30,13 @@
    <!-- (with the 'node-input-' prefix).                                     -->
    <!-- The available icon classes are defined Font Awesome Icons (FA Icons) -->
     <div class="form-row">
-        <label for="node-input-proxy"><i class="fa fa-tasks"></i> Proxy Server </label>
+        <label for="node-input-proxy"><i class="fa fa-tasks"></i> Proxy Conn </label>
         <input type="text" id="node-input-proxy">    
     </div>
 
     <br/>
     <div class="form-row">
-        <label for="node-input-address"><i class="fa fa-tag"></i> Address </label>
+        <label for="node-input-address"><i class="fa fa-tag"></i> Sub Address </label>
         <input type="text" id="node-input-address" placeholder="C001">
     </div>
 
@@ -57,10 +57,10 @@
    <!-- This content appears in the Info sidebar when a node is selected     -->
    <!-- The first <p> is used as the pop-up tool tip when hovering over a    -->
    <!-- node in the palette.                                                 -->
-   <p>BLE mesh input node to subscribe to a device or group address.</p>
+   <p>Mesh input node that subscribes to a device or group address.</p>
    <list>Configuration:
-    <li><code>Proxy server</code>: connection configuration</li>
-    <li><code>Address</code>: 2-byte hexadecimal address to subscribe to (e.g. 89AB)</li>
+    <li><code>Proxy Conn</code>: Proxy connection configuration</li>
+    <li><code>Address</code>: 2-byte hexadecimal subscribe address (e.g. 89AB)</li>
     <li><code>Name</code>: Node name</li>
    </list>
    <br/>
@@ -70,7 +70,7 @@
     <li><code>msg.dst</code>: 2-byte destination address (matching configured address)</li>
     <li><code>msg.opcode</code>: 1- or 2-byte operation code</li>
     <li><code>msg.company_code</code>: 2-byte company code (if available)</li>
-    <li><code>msg.params</code>: byte array of model for subscribed address</li>
+    <li><code>msg.params</code>: Byte array of associated model for subscribed address</li>
    </list>
 </script>>
 
@@ -107,13 +107,13 @@
     <!-- (with the 'node-input-' prefix).                                     -->
     <!-- The available icon classes are defined Font Awesome Icons (FA Icons) -->
      <div class="form-row">
-         <label for="node-input-proxy"><i class="fa fa-tasks"></i> Proxy Server </label>
+         <label for="node-input-proxy"><i class="fa fa-tasks"></i> Proxy Conn </label>
          <input type="text" id="node-input-proxy">    
      </div>
  
      <br/>
      <div class="form-row">
-         <label for="node-input-address"><i class="fa fa-tag"></i> Address </label>
+         <label for="node-input-address"><i class="fa fa-tag"></i> Pub Address </label>
          <input type="text" id="node-input-address" placeholder="013C">
      </div>
 
@@ -131,7 +131,7 @@
 
      <br/>
      <div class="form-row">
-         <label for="node-input-params"><i class="fa fa-tag"></i> Params </label>
+         <label for="node-input-params"><i class="fa fa-tag"></i>Model Pars </label>
          <input type="text" id="node-input-params" placeholder="0100">
      </div>
  
@@ -152,10 +152,27 @@
     <!-- This content appears in the Info sidebar when a node is selected     -->
     <!-- The first <p> is used as the pop-up tool tip when hovering over a    -->
     <!-- node in the palette.                                                 -->
-    <p>Simple sample input node. Just sends a single message when it starts up.
-    This is not very useful.</p>
-    <p>Outputs an object called <code>msg</code> containing <code>msg.topic</code> and
-    <code>msg.payload</code>. msg.payload is a String.</p>
+    <p>Mesh output node that pulishes to a device or group address.</p>
+    <list>Configuration:
+        <li><code>Proxy Conn</code>: Proxy connection configuration</li>
+        <li><code>Address</code>: 2-byte hexadecimal publish address (e.g. 89AB)</li>
+        <li><code>Op Code</code>: 1- to 3-byte hexadecimal message operational code (e.g. 89AB)</li>
+        <li><code>TTL</code>: Number of relays before message is discarded</li>
+        <li><code>Params</code>: Hexadecimal byte array of message parameters according to the publish mesh model</li>
+        <li><code>Name</code>: Node name</li>
+    </list>
+    <p>If the input message contains any of <code>address</code>, <code>opcode</code>, <code>params</code>/<code>payload</code> or <code>ttl</code>, the default configured value will
+        be replaced with the one provided in the message.</p>
+    <br/>
+    <p> If an acknowledgement message is received, an output message is sent.
+    <list>Outputs <code>msg</code> containing:
+        <li><code>msg.seq</code>: 2-byte sequence number</li>
+        <li><code>msg.src</code>: 2-byte source address (matching publish address)</li>
+        <li><code>msg.dst</code>: 2-byte destination address (matching local device address)</li>
+        <li><code>msg.opcode</code>: 1- or 2-byte operation code</li>
+        <li><code>msg.company_code</code>: 2-byte company code (if available)</li>
+        <li><code>msg.params</code>: Byte array of model for subscribed address</li>
+    </list>
  </script>
  
  <!-- Finally, the node type is registered along with all of its properties   -->
@@ -206,19 +223,19 @@
 
     <br/>
     <div class="form-row">
-        <label for="node-input-address"><i class="fa fa-tag"></i> Address </label>
+        <label for="node-input-address"><i class="fa fa-tag"></i> Local Addr </label>
         <input type="text" id="node-input-address" placeholder="108E">
     </div>
 
     <br/>
     <div class="form-row">
         <label for="node-input-filter"><i class="fa fa-tag"></i> Filter </label>
-        <input type="text" id="node-input-filter" placeholder="mesh">
+        <input type="text" id="node-input-filter" placeholder="<Substring matching advertisements local name>">
     </div>
 
     <br/>
     <div class="form-row">
-        <label for="node-input-rssi"><i class="fa fa-tag"></i> Rssi Min </label>
+        <label for="node-input-rssi"><i class="fa fa-tag"></i> RSSI Min </label>
         <input type="text" id="node-input-rssi" placeholder="-75">
     </div>
 
@@ -238,10 +255,15 @@
     <!-- This content appears in the Info sidebar when a node is selected     -->
     <!-- The first <p> is used as the pop-up tool tip when hovering over a    -->
     <!-- node in the palette.                                                 -->
-    <p>Simple sample input node. Just sends a single message when it starts up.
-    This is not very useful.</p>
-    <p>Outputs an object called <code>msg</code> containing <code>msg.topic</code> and
-    <code>msg.payload</code>. msg.payload is a String.</p>
+    <p>Proxy connection configuration</p>
+    <list>Configuration:
+        <li><code>Net Key</code>: 16-byte hexadecimal network key</li>
+        <li><code>App Key</code>: 16-byte hexadecimal application key</li>
+        <li><code>Local Addr</code>: 2-byte hexadecimal local device address (e.g. 108E)</li>
+        <li><code>Filter</code>: String which must be part of a found device name to allow a proxy connection.</li>
+        <li><code>RSSI Min</code>: Minimum RSSI value of a found device to allow a proxy connection.</li>
+        <li><code>Name</code>: Node name</li>
+    </list>
  </script>
 
 <script type="text/javascript">
