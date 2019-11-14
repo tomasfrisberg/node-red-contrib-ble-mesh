@@ -596,9 +596,12 @@ ProxyClient.prototype.parseNetworkPdu = function(network_pdu) {
     var hex_decrypted = result.hex_decrypted;
     var hex_seq = result.hex_pdu_seq;
     var hex_src = result.hex_pdu_src;
+    var hex_ctl_ttl = result.hex_pdu_ctl_tll;
 
     result = this.decryptAndVerifyAccessPayload(hex_seq, hex_src, hex_decrypted);
-
+    if(result) {
+        result.hex_ttl = hex_ctl_ttl; //TODO: is ctl == 0?
+    }
 
     switch(this.state) {
     case State.ON_CONNECTED_IDLE:
@@ -750,6 +753,7 @@ ProxyClient.prototype.decryptAndVerifyNetworkPdu = function (type, hex_deobfusca
     }
 
     var res = {};
+    res.hex_pdu_ctl_tll = hex_pdu_ctl_ttl;
     res.hex_pdu_seq = hex_pdu_seq;
     res.hex_pdu_src = hex_pdu_src;
     res.hex_decrypted = result.hex_decrypted;

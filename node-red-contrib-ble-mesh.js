@@ -98,6 +98,7 @@ module.exports = function(RED) {
             case "Data":
                 if(this.address === data.hex_dst.toLowerCase()) {
                     var msg = {};
+                    msg.ttl = utils.hexToBytes(data.hex_ttl);
                     msg.seq = utils.hexToBytes(data.hex_seq);
                     msg.src = utils.hexToBytes(data.hex_src);
                     msg.dst = utils.hexToBytes(data.hex_dst);
@@ -225,6 +226,7 @@ module.exports = function(RED) {
                 if((this.address === data.hex_src.toLowerCase()) &&
                    (this.meshProxy.address === data.hex_dst.toLowerCase())) {
                     var msg = {};
+                    msg.ttl = utils.hexToBytes(data.hex_ttl);
                     msg.seq = utils.hexToBytes(data.hex_seq);
                     msg.src = utils.hexToBytes(data.hex_src);
                     msg.dst = utils.hexToBytes(data.hex_dst);
