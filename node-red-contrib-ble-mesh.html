@@ -208,6 +208,131 @@
         }
      });
  </script>
+
+<script type="text/x-red" data-template-name="mesh-parser">
+    <!-- data-template-name identifies the node type this is for              -->
+ 
+    <!-- Each of the following divs creates a field in the edit dialog.       -->
+    <!-- Generally, there should be an input for each property of the node.   -->
+    <!-- The for and id attributes identify the corresponding property        -->
+    <!-- (with the 'node-input-' prefix).                                     -->
+    <!-- The available icon classes are defined Font Awesome Icons (FA Icons) -->
+
+    <div class="form-row">
+        <label for="node-input-bufname"><i class="fa fa-tag"></i> Buf Name </label>
+        <input type="text" id="node-input-bufname" placeholder="payload">
+    </div>
+
+    <br/>
+    <div class="form-row">
+        <label for="node-input-idformat"><i class="fa fa-tag"></i> Type </label>
+        <select type="text" id="node-input-idformat">
+            <option value="UBX-C209"> UBX-C209 </option>
+            <option value="GenericOnOffSet"> GenericOnOffSet </option>
+            <option value="GenericOnOffStatus"> GenericOnOffStatus </option>
+            <option value="Custom"> Custom </option>
+        </select>
+    </div>
+
+     <div class="form-row">
+         <label for="node-input-format"><i class="fa fa-tag"></i> Format </label>
+         <input type="text" id="node-input-format" placeholder="s8,name1,u8,name2,u16,name3">
+     </div>
+ 
+     <br/>
+     <!-- By convention, most nodes have a 'name' property. The following div -->
+     <!-- provides the necessary field. Should always be the last option      -->
+     <div class="form-row">
+         <label for="node-input-name"><i class="fa fa-tag"></i> Name</label>
+         <input type="text" id="node-input-name" placeholder="Name">
+     </div>
+     
+ </script>
+ 
+ 
+ <!-- Next, some simple help text is provided for the node.                   -->
+ <script type="text/x-red" data-help-name="mesh-parser">
+    <!-- data-help-name identifies the node type this help is for             -->
+    <!-- This content appears in the Info sidebar when a node is selected     -->
+    <!-- The first <p> is used as the pop-up tool tip when hovering over a    -->
+    <!-- node in the palette.                                                 -->
+    <p>Mesh output node that pulishes to a device or group address.</p>
+    <list>Configuration:
+        <li><code>Proxy Conn</code>: Proxy connection configuration</li>
+        <li><code>Address</code>: 2-byte hexadecimal publish address (e.g. 013C)</li>
+        <li><code>Op Code</code>: 1- to 3-byte hexadecimal message operational code (e.g. 8202)</li>
+        <li><code>TTL</code>: Number of relays before message is discarded</li>
+        <li><code>Params</code>: Hexadecimal byte array of message parameters according to the publish mesh model</li>
+        <li><code>Name</code>: Node name</li>
+    </list>
+    <p>If the input message contains any of <code>address</code>, <code>opcode</code>, <code>params</code>/<code>payload</code> or <code>ttl</code>, the default configured value will
+        be replaced with the one provided in the message.</p>
+    <br/>
+    <p> If an acknowledgement message is received, an output message is sent.
+    <list>Outputs <code>msg</code> containing:
+        <li><code>msg.seq</code>: 2-byte sequence number</li>
+        <li><code>msg.src</code>: 2-byte source address (matching publish address)</li>
+        <li><code>msg.dst</code>: 2-byte destination address (matching local device address)</li>
+        <li><code>msg.opcode</code>: 1- or 2-byte operation code</li>
+        <li><code>msg.company_code</code>: 2-byte company code (if available)</li>
+        <li><code>msg.params</code>: Byte array of model for subscribed address</li>
+    </list>
+ </script>
+ 
+ <!-- Finally, the node type is registered along with all of its properties   -->
+ <!-- The example below shows a small subset of the properties that can be set-->
+ <script type="text/javascript">
+     RED.nodes.registerType('mesh-parser',{
+        category: 'ble',      // the palette category
+        defaults: {             // defines the editable properties of the node
+            name:       {value:""},   //  along with default values.
+            bufname:    {value:""},
+            idformat:   {value:"UBX-C209"},
+            format:     {value:"", validate: function (v) { return  (true) }},
+        },
+        inputs:1,               // set the number of inputs - only 0 or 1
+        outputs:1,              // set the number of outputs - 0 to n
+        color: "#ddd",          // set icon color
+        // set the icon (held in icons dir below where you save the node)
+        icon: "myicon.png",     // saved in  icons/myicon.png
+        label: function() {     // sets the default label contents
+            return this.name || this.idformat || "mesh-parser";
+        },
+        labelStyle: function() { // sets the class to apply to the label
+            return this.name?"node_label_italic":"";
+        },
+        oneditprepare: function () {
+            //$("#node-input-bufname").val(this.bufname);
+            //$("#node-input-format").val(this.format);
+            //$("#node-input-type").val(this.type || "c209");
+
+            var updateOptions = function () {
+                var idformat = $("#node-input-idformat").val();
+                if (idformat == "UBX-C209") {
+                    $("#node-input-format").val("s8,temperature,u8,humidity");
+                } else if(idformat == "GenericOnOffSet") {
+                    $("#node-input-format").val("u8,value,u8,transactionId");
+                } else if(idformat == "GenericOnOffStatus") {
+                    $("#node-input-format").val("u8,value");
+                } else if(idformat == "Custom") {
+                    $("#node-input-format").val("");
+                }
+                this.idformat = idformat;
+            };
+            updateOptions();
+            $("#node-input-idformat").change(updateOptions);
+        },
+        /*
+        oneditsave: function () {
+            //this.name = $("#node-input-name").typedInput('value');
+            //this.bufname = $("#node-input-bufname").val();
+            //this.type = $("#node-input-type").val();
+            //this.format = $("#node-input-format").val();
+        }
+        */
+     });
+ </script>
+
  
 
 <script type="text/x-red" data-template-name="mesh-proxy">

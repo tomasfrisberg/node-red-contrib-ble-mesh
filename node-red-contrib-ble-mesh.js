@@ -26,6 +26,8 @@ var utils = require("./utils");
 var ProxyNode = require("./ble-mesh-proxy-node");
 var proxyNode = null;
 
+var meshParser = require("./ble-mesh-parser.js");
+
 module.exports = function(RED) {
     "use strict";
     // require any external libraries we may need....
@@ -245,6 +247,59 @@ module.exports = function(RED) {
     // Node functions.
     RED.nodes.registerType("mesh-out",MeshOut);
 
+    function MeshParser(n) {
+        // Create a RED node
+        RED.nodes.createNode(this,n);
+
+        // Store local copies of the node configuration (as defined in the .html)
+        this.bufname = n.bufname;
+        this.idformat = n.idformat;
+        this.format = n.format;
+        this.name = n.name;
+
+        this.createTemplate = function(format) {
+            var arr = "s8,   name1  ,   u8 ,name2,  u16     ,name3".split(",");
+            arr = arr.map((val) => {
+                return val.trim();
+            });
+            return arr;
+        }
+
+        this.template = this.createTemplate(this.format);
+
+        // copy "this" object in case we need it in context of callbacks of other functions.
+        var node = this;
+
+        // Do whatever you need to do in here - declare callbacks etc
+        // Note: this sample doesn't do anything much - it will only send
+        // this message once at startup...
+        // Look at other real nodes for some better ideas of what to do....
+        //eventEmitter.addListener('Status', statusCallback.bind(this));
+
+        // respond to inputs....
+        this.on('input', function (msg) {
+            // TODO
+            if(msg.payload instanceof Array) {
+                // Convert array to object
+                msg.payload = meshParser.deserialize(this.template, msg.payload);
+            }
+            else {
+                // Convert object to array
+                msg.payload = meshParser.serialize(this.template, msg.payload);
+            }
+            node.send(msg);
+        });
+
+        this.on("close", function() {
+            // Called when the node is shutdown - eg on redeploy.
+            // Allows ports to be closed, connections dropped etc.
+            // eg: node.client.disconnect();
+        });
+    }
+
+    // Register the node by name. This must be called before overriding any of the
+    // Node functions.
+    RED.nodes.registerType("mesh-parser", MeshParser);
 
     function MeshProxy(n) {
         // Create a RED node
